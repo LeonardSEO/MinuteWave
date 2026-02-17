@@ -1,0 +1,3 @@
+"NSMicrophoneUsageDescription" = "MinuteWave gebruikt de microfoon om realtime transcripties te maken.";
+"NSScreenCaptureUsageDescription" = "MinuteWave gebruikt scherm- en systeemaudio-opname voor lokale transcriptie.";
+"NSSystemAudioUsageDescription" = "MinuteWave gebruikt systeemaudio-opname om vergaderaudio mee te transcriberen.";

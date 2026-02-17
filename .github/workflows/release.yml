@@ -1,0 +1,42 @@
+name: Release DMG
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install release dependencies
+        run: |
+          brew update
+          brew install create-dmg sqlcipher
+
+      - name: Build unsigned DMG
+        run: ./scripts/build_unsigned_dmg.sh release
+
+      - name: Generate SHA256
+        run: |
+          shasum -a 256 dist/MinuteWave-macOS-unsigned.dmg > dist/MinuteWave-macOS-unsigned.dmg.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/MinuteWave-macOS-unsigned.dmg
+            dist/MinuteWave-macOS-unsigned.dmg.sha256
+          generate_release_notes: true
+          body: |
+            ## MinuteWave release
+
+            - macOS unsigned DMG build
+            - If Gatekeeper blocks launch, right-click the app and choose **Open**

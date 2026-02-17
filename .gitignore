@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Swift build artifacts
+.build/
+.swiftpm/
+
+# Local distribution artifacts
+dist/
+
+# Local tooling
+*.log
