@@ -1,14 +1,15 @@
-# MinuteWave - Meeting Copilot for macOS
+# MinuteWave - Local-First AI Meeting Copilot for macOS
 
 <p align="center">
-  <img src="icon-clean.png" alt="MinuteWave logo" width="180" />
+  <img src="icon-clean.png" alt="MinuteWave logo" width="220" />
 </p>
 
 <p align="center">
-  Local-first meeting recorder with transcription, diarization, summaries, and transcript chat.
+  Record meetings, transcribe speech, separate speakers, generate summaries, and chat with your transcript.
 </p>
 
 <p align="center">
+  <a href="https://github.com/LeonardSEO/MinuteWave/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/LeonardSEO/MinuteWave/release.yml?style=for-the-badge" alt="Release workflow status"></a>
   <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/v/release/LeonardSEO/MinuteWave?style=for-the-badge" alt="Latest release"></a>
   <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/downloads/LeonardSEO/MinuteWave/total?style=for-the-badge" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
@@ -17,38 +18,75 @@
 
 <p align="center">
   <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS-unsigned.dmg">
-    <img src="https://img.shields.io/badge/Download-Latest%20DMG-0A84FF?style=for-the-badge&logo=apple" alt="Download DMG" />
+    <img src="https://img.shields.io/badge/Download-Latest%20DMG-0A84FF?style=for-the-badge&logo=apple" alt="Download latest DMG" />
   </a>
 </p>
 
-## Why MinuteWave
+## What MinuteWave Does
 
-MinuteWave is a native SwiftUI app for Apple Silicon Macs that captures microphone + system audio, creates transcripts with speaker separation, and helps you turn long meetings into clear notes and actions.
+MinuteWave is a native SwiftUI macOS app focused on fast, private meeting workflows:
 
-## Highlights
+- Capture microphone and system audio.
+- Produce transcripts with speaker labels (diarization).
+- Generate clean meeting summaries.
+- Ask follow-up questions in transcript-aware chat.
+- Export results as `Markdown`, `TXT`, or `JSON`.
 
-- Native macOS app built with SwiftUI.
-- Local-first transcription with FluidAudio (Parakeet TDT v3 + offline diarization).
-- Azure/OpenAI support for cloud transcription and AI responses.
-- LM Studio local endpoint support for summary and transcript chat.
-- Transcript-aware chat with chunk retrieval.
-- Export to Markdown, TXT, and JSON.
-- Privacy mode with SQLCipher migration support.
+## Key Features
 
-## Quick Start
+### Recording and Audio Capture
 
-### 1. Download
+- Native recording flow for macOS.
+- Two capture modes:
+  - `Microphone only`
+  - `Microphone + system audio`
+- Built-in elapsed timer and session management.
 
-Download the latest DMG from the releases page:
+### Transcription
 
-- [Latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest)
-- [Direct DMG download](https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS-unsigned.dmg)
+- Local-first transcription using FluidAudio (`Parakeet TDT v3`) with offline diarization.
+- Cloud transcription options:
+  - Azure OpenAI
+  - OpenAI
+- Fallback behavior and provider health/status feedback in-app.
 
-### 2. Install
+### Summaries and Transcript Chat
 
-1. Open `MinuteWave-macOS-unsigned.dmg`
-2. Drag `MinuteWave.app` to `Applications`
-3. On first launch, right-click the app and choose **Open** (unsigned build)
+- Generate executive summaries from completed transcripts.
+- Ask questions against transcript content with retrieval-based context selection.
+- Configurable summary prompt template.
+
+### Integrations
+
+MinuteWave can work with:
+
+- **Azure OpenAI**
+  - Configurable endpoint, API versions, and deployments for chat/summary/transcription.
+- **OpenAI API**
+  - Configurable base URL and models for chat/summary/transcription.
+- **LM Studio (local server)**
+  - Local endpoint for summary + transcript chat.
+  - Loaded model selection from running LM Studio instance.
+
+## Security and Privacy
+
+- Local transcription path available for privacy-sensitive workflows.
+- API secrets stored in macOS Keychain.
+- Optional SQLCipher-backed database encryption with migration support.
+- Session data stored locally (SQLite) under app support directories.
+
+## Requirements
+
+- macOS 14+
+- Apple Silicon Mac
+- 16 GB RAM recommended (and required by onboarding checks for full local workflow)
+
+## Install (DMG)
+
+1. Download: [Latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest)
+2. Open `MinuteWave-macOS-unsigned.dmg`
+3. Drag `MinuteWave.app` to `Applications`
+4. First launch (unsigned build): right-click app -> **Open**
 
 ## Build From Source
 
@@ -63,39 +101,46 @@ Run tests:
 swift test
 ```
 
-Build an unsigned release DMG:
+Create unsigned DMG:
 
 ```bash
 ./scripts/build_unsigned_dmg.sh release
 ```
 
+## Architecture (High-Level)
+
+```text
+Mic + System Audio
+       |
+       v
+HybridAudioCaptureEngine
+       |
+       +--> Local FluidAudio (ASR + diarization)
+       +--> Azure/OpenAI transcription provider
+
+Transcript + metadata -> SQLite repository
+                         |
+                         +--> Summary providers (Azure/OpenAI/LM Studio)
+                         +--> Transcript chat providers (Azure/OpenAI/LM Studio)
+                         +--> ExportService (MD/TXT/JSON)
+```
+
 ## Versioning and Releases
 
-MinuteWave follows semantic version tags:
+- Versioning format: `vMAJOR.MINOR.PATCH`.
+- App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
+- Release workflow: `.github/workflows/release.yml`.
+- On each tag push (example `v0.1.1`), GitHub Actions builds and publishes release assets.
 
-- `vMAJOR.MINOR.PATCH` (example: `v0.1.0`)
+## Current Release
 
-Release source of truth:
-
-- App version is stored in `Sources/AINoteTakerApp/Resources/AppInfo.plist` (`CFBundleShortVersionString`)
-- Git tags and GitHub Releases use the same version prefix (`v`)
-
-A GitHub Actions workflow is included at `.github/workflows/release.yml`:
-
-- Trigger on version tags like `v0.1.0`
-- Build the macOS DMG
-- Publish a GitHub Release with downloadable artifacts
-
-## Security and Privacy
-
-- Local provider can run fully in-process.
-- API keys are stored in Keychain.
-- Optional database encryption with SQLCipher migration.
+- `v0.1.1`
+- DMG asset: `MinuteWave-macOS-unsigned.dmg`
 
 ## Documentation
 
-- macOS permission setup: `docs/XcodePermissionsSetup.md`
+- macOS permissions setup: `docs/XcodePermissionsSetup.md`
 
 ## License
 
-MIT License - see [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).

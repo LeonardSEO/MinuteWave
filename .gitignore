@@ -10,3 +10,6 @@ dist/
 
 # Local tooling
 *.log
+
+# Local reports
+security_best_practices_report.md
