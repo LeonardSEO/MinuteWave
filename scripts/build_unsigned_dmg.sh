@@ -10,6 +10,10 @@ STAGING_DIR="$DIST_DIR/dmg-staging"
 DMG_PATH="$DIST_DIR/${APP_NAME}-macOS-unsigned.dmg"
 DMG_VOLUME_NAME="${APP_NAME} Installer"
 DMG_BACKGROUND_PATH="$ROOT_DIR/docs/assets/dmg-background.png"
+FORCE_PLAIN_DMG="${FORCE_PLAIN_DMG:-0}"
+if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  FORCE_PLAIN_DMG=1
+fi
 
 mkdir -p "$DIST_DIR"
 
@@ -37,7 +41,7 @@ if ! command -v create-dmg >/dev/null 2>&1; then
   fi
 fi
 
-if command -v create-dmg >/dev/null 2>&1; then
+if [[ "$FORCE_PLAIN_DMG" != "1" ]] && command -v create-dmg >/dev/null 2>&1; then
   echo "Creating styled DMG (create-dmg)..."
   CREATE_DMG_ARGS=(
     --volname "$DMG_VOLUME_NAME"
@@ -55,7 +59,7 @@ if command -v create-dmg >/dev/null 2>&1; then
 
   create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$STAGING_DIR"
 else
-  echo "create-dmg unavailable, creating plain DMG with hdiutil..."
+  echo "Creating plain DMG with hdiutil..."
   hdiutil create \
     -volname "$DMG_VOLUME_NAME" \
     -srcfolder "$STAGING_DIR" \
