@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -31,17 +32,26 @@ jobs:
           brew update
           brew install create-dmg sqlcipher
 
-      - name: Import Apple Development certificate (optional)
+      - name: Detect signing secrets
+        id: signing
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
           APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
-          if [[ -z "${APPLE_DEV_CERT_P12_BASE64:-}" || -z "${APPLE_DEV_CERT_PASSWORD:-}" || -z "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
-            echo "Signing secrets not fully configured; skipping certificate import."
-            exit 0
+          if [[ -n "${APPLE_DEV_CERT_P12_BASE64:-}" && -n "${APPLE_DEV_CERT_PASSWORD:-}" && -n "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Import Apple Development certificate (optional)
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
+        env:
+          APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
+          APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+          APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
+        run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/minutewave-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           CERT_PATH="$RUNNER_TEMP/apple-dev-cert.p12"
@@ -61,7 +71,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
-          if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
+          if [[ "${{ steps.signing.outputs.enabled }}" == "true" && -n "${SIGNING_IDENTITY:-}" ]]; then
             echo "Building DMG with Apple Development signature: $SIGNING_IDENTITY"
             SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_unsigned_dmg.sh release
           else
@@ -78,6 +88,7 @@ jobs:
           shasum -a 256 dist/MinuteWave-macOS-unsigned.dmg > dist/MinuteWave-macOS-unsigned.dmg.sha256
 
       - name: Publish GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
         with:
           files: |
