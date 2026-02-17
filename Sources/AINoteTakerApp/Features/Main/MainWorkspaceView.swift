@@ -288,9 +288,6 @@ struct MainWorkspaceView: View {
                     Text(currentSessionName)
                         .font(.title2.weight(.semibold))
                         .lineLimit(1)
-                        .onTapGesture(count: 2) {
-                            startRename()
-                        }
 
                     Button {
                         startRename()
