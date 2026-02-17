@@ -88,6 +88,19 @@ MinuteWave can work with:
 3. Drag `MinuteWave.app` to `Applications`
 4. First launch (unsigned build): right-click app -> **Open**
 
+### Unsigned Build Behavior (Important)
+
+- `spctl --assess` returning `rejected` is expected for ad-hoc signed apps.
+- `codesign --verify` can still be valid while Gatekeeper rejects distribution trust.
+- If macOS blocks launch:
+  1. Right-click app -> **Open**
+  2. Or in terminal: `xattr -dr com.apple.quarantine "/Applications/MinuteWave.app"`
+
+### Code Signing Options
+
+- **Free Apple ID / Personal Team (Xcode):** good for local development on your own Mac; not suitable for public distribution.
+- **Paid Apple Developer Program:** required for `Developer ID Application` signing + notarization for clean public install flow.
+
 ## Build From Source
 
 ```bash
@@ -105,6 +118,13 @@ Create unsigned DMG:
 
 ```bash
 ./scripts/build_unsigned_dmg.sh release
+```
+
+Optional: sign app bundle with a local identity before DMG build:
+
+```bash
+security find-identity -v -p codesigning
+SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build_dev_app_bundle.sh release
 ```
 
 ## Architecture (High-Level)
@@ -130,11 +150,26 @@ Transcript + metadata -> SQLite repository
 - Versioning format: `vMAJOR.MINOR.PATCH`.
 - App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
 - Release workflow: `.github/workflows/release.yml`.
-- On each tag push (example `v0.1.1`), GitHub Actions builds and publishes release assets.
+- On each tag push (example `v0.1.2`), GitHub Actions builds and publishes release assets.
+- Optional GitHub signing: configure repository secrets to sign release builds with Apple Development.
+
+### GitHub Apple Development Signing (Optional)
+
+Set these repository secrets in GitHub:
+
+- `APPLE_DEV_CERT_P12_BASE64` (base64 of exported `.p12` certificate)
+- `APPLE_DEV_CERT_PASSWORD` (password used when exporting `.p12`)
+- `APPLE_DEV_SIGNING_IDENTITY` (example: `Apple Development: Leonard van Hemert (3RSGDZZR5Z)`)
+
+Create the base64 value locally:
+
+```bash
+base64 -i ~/Desktop/apple-development.p12 | pbcopy
+```
 
 ## Current Release
 
-- `v0.1.1`
+- `v0.1.2`
 - DMG asset: `MinuteWave-macOS-unsigned.dmg`
 
 ## Documentation

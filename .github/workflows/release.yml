@@ -16,13 +16,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Print toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
       - name: Install release dependencies
         run: |
           brew update
           brew install create-dmg sqlcipher
 
-      - name: Build unsigned DMG
-        run: ./scripts/build_unsigned_dmg.sh release
+      - name: Import Apple Development certificate (optional)
+        if: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 != '' && secrets.APPLE_DEV_CERT_PASSWORD != '' && secrets.APPLE_DEV_SIGNING_IDENTITY != '' }}
+        env:
+          APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
+          APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/minutewave-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$RUNNER_TEMP/apple-dev-cert.p12"
+
+          echo "$APPLE_DEV_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_DEV_CERT_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build DMG
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
+        run: |
+          if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
+            echo "Building DMG with Apple Development signature: $SIGNING_IDENTITY"
+            SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_unsigned_dmg.sh release
+          else
+            echo "No signing secrets found. Building ad-hoc DMG."
+            ./scripts/build_unsigned_dmg.sh release
+          fi
+
+      - name: Verify app signature
+        run: |
+          codesign -dv --verbose=4 .build/AppBundle/MinuteWave.app 2>&1 | grep -E "Authority=|TeamIdentifier=|Signature"
 
       - name: Generate SHA256
         run: |
@@ -38,5 +82,6 @@ jobs:
           body: |
             ## MinuteWave release
 
-            - macOS unsigned DMG build
+            - macOS DMG build
+            - Uses Apple Development signing when signing secrets are configured
             - If Gatekeeper blocks launch, right-click the app and choose **Open**

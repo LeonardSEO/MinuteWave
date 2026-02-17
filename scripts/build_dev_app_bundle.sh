@@ -8,6 +8,7 @@ BUILD_DIR="$ROOT_DIR/.build/$CONFIGURATION"
 EXECUTABLE_PATH="$BUILD_DIR/$APP_NAME"
 RESOURCE_BUNDLE_PATH="$BUILD_DIR/${APP_NAME}_AINoteTakerApp.resources"
 APP_BUNDLE_PATH="$ROOT_DIR/.build/AppBundle/${APP_NAME}.app"
+FRAMEWORKS_DIR="$APP_BUNDLE_PATH/Contents/Frameworks"
 PLIST_TEMPLATE_PATH="$ROOT_DIR/Sources/AINoteTakerApp/Resources/AppInfo.plist"
 ICON_SOURCE_PATH_CLEAN="$ROOT_DIR/icon-clean.png"
 ICON_SOURCE_PATH_TRANSPARENT="$ROOT_DIR/icon-removebg-preview.png"
@@ -21,6 +22,9 @@ else
 fi
 ICONSET_DIR="$ROOT_DIR/.build/IconSet.iconset"
 ICON_ICNS_PATH="$ROOT_DIR/.build/MinuteWave.icns"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
+ENTITLEMENTS_PATH="${ENTITLEMENTS_PATH:-}"
 
 if [[ ! -f "$PLIST_TEMPLATE_PATH" ]]; then
   echo "Info.plist template not found: $PLIST_TEMPLATE_PATH" >&2
@@ -39,6 +43,7 @@ echo "Creating app bundle at: $APP_BUNDLE_PATH"
 rm -rf "$APP_BUNDLE_PATH"
 mkdir -p "$APP_BUNDLE_PATH/Contents/MacOS"
 mkdir -p "$APP_BUNDLE_PATH/Contents/Resources"
+mkdir -p "$FRAMEWORKS_DIR"
 
 cp "$EXECUTABLE_PATH" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 cp "$PLIST_TEMPLATE_PATH" "$APP_BUNDLE_PATH/Contents/Info.plist"
@@ -46,6 +51,51 @@ cp "$PLIST_TEMPLATE_PATH" "$APP_BUNDLE_PATH/Contents/Info.plist"
 if [[ -d "$RESOURCE_BUNDLE_PATH" ]]; then
   cp -R "$RESOURCE_BUNDLE_PATH" "$APP_BUNDLE_PATH/Contents/Resources/"
 fi
+
+embed_sqlcipher_runtime() {
+  local linked_sqlcipher
+  linked_sqlcipher="$(otool -L "$EXECUTABLE_PATH" | awk '/libsqlcipher\.dylib/{print $1; exit}')"
+
+  if [[ -z "$linked_sqlcipher" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$linked_sqlcipher" ]]; then
+    if command -v brew >/dev/null 2>&1; then
+      local brew_sqlcipher
+      brew_sqlcipher="$(brew --prefix sqlcipher 2>/dev/null || true)"
+      if [[ -n "$brew_sqlcipher" && -f "$brew_sqlcipher/lib/libsqlcipher.dylib" ]]; then
+        linked_sqlcipher="$brew_sqlcipher/lib/libsqlcipher.dylib"
+      fi
+    fi
+  fi
+
+  if [[ ! -f "$linked_sqlcipher" ]]; then
+    echo "Warning: sqlcipher runtime library not found at $linked_sqlcipher"
+    return 0
+  fi
+
+  local embedded_sqlcipher="$FRAMEWORKS_DIR/libsqlcipher.dylib"
+  cp "$linked_sqlcipher" "$embedded_sqlcipher"
+
+  local linked_libcrypto
+  linked_libcrypto="$(otool -L "$linked_sqlcipher" | awk '/libcrypto\.3\.dylib/{print $1; exit}')"
+  if [[ -n "$linked_libcrypto" && -f "$linked_libcrypto" ]]; then
+    local embedded_libcrypto="$FRAMEWORKS_DIR/libcrypto.3.dylib"
+    cp "$linked_libcrypto" "$embedded_libcrypto"
+    install_name_tool -id "@rpath/libcrypto.3.dylib" "$embedded_libcrypto" || true
+    install_name_tool -change "$linked_libcrypto" "@rpath/libcrypto.3.dylib" "$embedded_sqlcipher" || true
+  fi
+
+  install_name_tool -id "@rpath/libsqlcipher.dylib" "$embedded_sqlcipher" || true
+  install_name_tool -change "$linked_sqlcipher" "@rpath/libsqlcipher.dylib" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" || true
+
+  if ! otool -l "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | grep -q "@executable_path/../Frameworks"; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
+  fi
+}
+
+embed_sqlcipher_runtime
 
 if [[ -f "$ICON_SOURCE_PATH" ]]; then
   rm -rf "$ICONSET_DIR"
@@ -65,7 +115,15 @@ if [[ -f "$ICON_SOURCE_PATH" ]]; then
 fi
 
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
-codesign --force --deep --sign - "$APP_BUNDLE_PATH"
+
+CODESIGN_ARGS=(--force --deep --sign "$SIGNING_IDENTITY")
+if [[ "$ENABLE_HARDENED_RUNTIME" == "1" ]]; then
+  CODESIGN_ARGS+=(--options runtime)
+fi
+if [[ -n "$ENTITLEMENTS_PATH" && -f "$ENTITLEMENTS_PATH" ]]; then
+  CODESIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PATH")
+fi
+codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE_PATH"
 
 BUNDLE_ID="$(
   /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
