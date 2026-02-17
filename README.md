@@ -1,22 +1,22 @@
-# MinuteWave - AI Meeting Notes for macOS
+# MinuteWave - Meeting Copilot for macOS
 
 <p align="center">
   <img src="icon-clean.png" alt="MinuteWave logo" width="180" />
 </p>
 
 <p align="center">
-  Local-first meeting recorder with AI transcription, diarization, summaries, and transcript chat.
+  Local-first meeting recorder with transcription, diarization, summaries, and transcript chat.
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeonardSEO/AI-note-taker/releases"><img src="https://img.shields.io/github/v/release/LeonardSEO/AI-note-taker?style=for-the-badge" alt="Latest release"></a>
-  <a href="https://github.com/LeonardSEO/AI-note-taker/releases"><img src="https://img.shields.io/github/downloads/LeonardSEO/AI-note-taker/total?style=for-the-badge" alt="Downloads"></a>
+  <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/v/release/LeonardSEO/MinuteWave?style=for-the-badge" alt="Latest release"></a>
+  <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/downloads/LeonardSEO/MinuteWave/total?style=for-the-badge" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple" alt="macOS 14+">
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeonardSEO/AI-note-taker/releases/latest/download/MinuteWave-macOS-unsigned.dmg">
+  <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS-unsigned.dmg">
     <img src="https://img.shields.io/badge/Download-Latest%20DMG-0A84FF?style=for-the-badge&logo=apple" alt="Download DMG" />
   </a>
 </p>
@@ -41,8 +41,8 @@ MinuteWave is a native SwiftUI app for Apple Silicon Macs that captures micropho
 
 Download the latest DMG from the releases page:
 
-- [Latest release](https://github.com/LeonardSEO/AI-note-taker/releases/latest)
-- [Direct DMG download](https://github.com/LeonardSEO/AI-note-taker/releases/latest/download/MinuteWave-macOS-unsigned.dmg)
+- [Latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest)
+- [Direct DMG download](https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS-unsigned.dmg)
 
 ### 2. Install
 
