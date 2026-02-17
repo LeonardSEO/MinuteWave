@@ -150,7 +150,7 @@ Transcript + metadata -> SQLite repository
 - Versioning format: `vMAJOR.MINOR.PATCH`.
 - App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
 - Release workflow: `.github/workflows/release.yml`.
-- On each tag push (example `v0.1.2`), GitHub Actions builds and publishes release assets.
+- On each tag push (example `v0.1.3`), GitHub Actions builds and publishes release assets.
 - Optional GitHub signing: configure repository secrets to sign release builds with Apple Development.
 
 ### GitHub Apple Development Signing (Optional)
@@ -169,7 +169,7 @@ base64 -i ~/Desktop/apple-development.p12 | pbcopy
 
 ## Current Release
 
-- `v0.1.2`
+- `v0.1.3`
 - DMG asset: `MinuteWave-macOS-unsigned.dmg`
 
 ## Documentation
