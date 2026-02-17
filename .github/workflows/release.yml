@@ -32,16 +32,21 @@ jobs:
           brew install create-dmg sqlcipher
 
       - name: Import Apple Development certificate (optional)
-        if: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 != '' && secrets.APPLE_DEV_CERT_PASSWORD != '' && secrets.APPLE_DEV_SIGNING_IDENTITY != '' }}
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+          APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
+          if [[ -z "${APPLE_DEV_CERT_P12_BASE64:-}" || -z "${APPLE_DEV_CERT_PASSWORD:-}" || -z "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
+            echo "Signing secrets not fully configured; skipping certificate import."
+            exit 0
+          fi
+
           KEYCHAIN_PATH="$RUNNER_TEMP/minutewave-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           CERT_PATH="$RUNNER_TEMP/apple-dev-cert.p12"
 
-          echo "$APPLE_DEV_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          echo "$APPLE_DEV_CERT_P12_BASE64" | base64 -D > "$CERT_PATH"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
