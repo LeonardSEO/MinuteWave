@@ -6,7 +6,8 @@ CONFIGURATION="${1:-debug}"
 APP_NAME="MinuteWave"
 BUILD_DIR="$ROOT_DIR/.build/$CONFIGURATION"
 EXECUTABLE_PATH="$BUILD_DIR/$APP_NAME"
-RESOURCE_BUNDLE_PATH="$BUILD_DIR/${APP_NAME}_AINoteTakerApp.resources"
+RESOURCE_BUNDLE_PATH_LEGACY="$BUILD_DIR/${APP_NAME}_AINoteTakerApp.resources"
+RESOURCE_BUNDLE_PATH_BUNDLE="$BUILD_DIR/${APP_NAME}_AINoteTakerApp.bundle"
 APP_BUNDLE_PATH="$ROOT_DIR/.build/AppBundle/${APP_NAME}.app"
 FRAMEWORKS_DIR="$APP_BUNDLE_PATH/Contents/Frameworks"
 PLIST_TEMPLATE_PATH="$ROOT_DIR/Sources/AINoteTakerApp/Resources/AppInfo.plist"
@@ -54,9 +55,24 @@ if [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
     || /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$APP_BUNDLE_PATH/Contents/Info.plist"
 fi
 
-if [[ -d "$RESOURCE_BUNDLE_PATH" ]]; then
-  cp -R "$RESOURCE_BUNDLE_PATH" "$APP_BUNDLE_PATH/Contents/Resources/"
-fi
+copy_resource_bundle() {
+  local bundle_path=""
+  if [[ -d "$RESOURCE_BUNDLE_PATH_BUNDLE" ]]; then
+    bundle_path="$RESOURCE_BUNDLE_PATH_BUNDLE"
+  elif [[ -d "$RESOURCE_BUNDLE_PATH_LEGACY" ]]; then
+    bundle_path="$RESOURCE_BUNDLE_PATH_LEGACY"
+  else
+    bundle_path="$(find "$BUILD_DIR" -maxdepth 1 -type d -name '*_AINoteTakerApp.bundle' | head -n 1)"
+  fi
+
+  if [[ -n "$bundle_path" && -d "$bundle_path" ]]; then
+    cp -R "$bundle_path" "$APP_BUNDLE_PATH/Contents/Resources/"
+  else
+    echo "Warning: app resource bundle not found in $BUILD_DIR"
+  fi
+}
+
+copy_resource_bundle
 
 embed_sqlcipher_runtime() {
   local linked_sqlcipher

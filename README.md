@@ -234,7 +234,7 @@ If a bad update is published:
 
 ## Current Release
 
-- `v0.1.6`
+- `v0.1.7`
 - DMG asset: `MinuteWave-macOS.dmg`
 - Sparkle assets: `MinuteWave.app.zip`, `appcast.xml`
 

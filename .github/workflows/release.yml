@@ -130,7 +130,7 @@ jobs:
           ARCHIVE_DIR="$RUNNER_TEMP/sparkle-archives"
           mkdir -p "$ARCHIVE_DIR"
           cp dist/MinuteWave.app.zip "$ARCHIVE_DIR/"
-          DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
 
           (
             cd "$ARCHIVE_DIR"

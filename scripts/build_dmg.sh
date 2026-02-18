@@ -60,6 +60,9 @@ if [[ "$FORCE_PLAIN_DMG" != "1" ]] && command -v create-dmg >/dev/null 2>&1; the
   create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$STAGING_DIR"
 else
   echo "Creating plain DMG with hdiutil..."
+  if [[ ! -e "$STAGING_DIR/Applications" ]]; then
+    ln -s /Applications "$STAGING_DIR/Applications"
+  fi
   hdiutil create \
     -volname "$DMG_VOLUME_NAME" \
     -srcfolder "$STAGING_DIR" \
