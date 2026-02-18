@@ -5,10 +5,35 @@ enum L10n {
     private static var localizationSearchBundles: [Bundle] {
         var bundles = [Bundle.main]
         #if SWIFT_PACKAGE
-        bundles.append(Bundle.module)
+        if shouldUseSwiftPackageModuleBundle() {
+            bundles.append(Bundle.module)
+        }
+        bundles.append(contentsOf: packageResourceBundles())
         #endif
         return bundles
     }
+
+    #if SWIFT_PACKAGE
+    private static func packageResourceBundles() -> [Bundle] {
+        let candidates = (Bundle.allBundles + Bundle.allFrameworks)
+            .filter { $0.bundleURL.lastPathComponent.hasSuffix("_AINoteTakerApp.bundle") }
+        if !candidates.isEmpty {
+            return candidates
+        }
+
+        if let resourceURL = Bundle.main.resourceURL {
+            let direct = resourceURL.appendingPathComponent("MinuteWave_AINoteTakerApp.bundle")
+            if let bundle = Bundle(url: direct) {
+                return [bundle]
+            }
+        }
+        return []
+    }
+
+    private static func shouldUseSwiftPackageModuleBundle() -> Bool {
+        Bundle.main.bundleURL.pathExtension != "app"
+    }
+    #endif
 
     static func setResolvedLanguageCode(_ code: String) {
         UserDefaults.standard.set(code, forKey: AppLanguageResolver.persistedResolvedLanguageCodeKey)

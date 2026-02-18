@@ -169,7 +169,7 @@ base64 -i ~/Desktop/apple-development.p12 | pbcopy
 
 ## Current Release
 
-- `v0.1.8`
+- `v0.1.9`
 - DMG asset: `MinuteWave-macOS.dmg`
 
 ## Documentation

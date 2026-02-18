@@ -11,9 +11,6 @@ DMG_PATH="$DIST_DIR/${APP_NAME}-macOS.dmg"
 DMG_VOLUME_NAME="${APP_NAME} Installer"
 DMG_BACKGROUND_PATH="$ROOT_DIR/docs/assets/dmg-background.png"
 FORCE_PLAIN_DMG="${FORCE_PLAIN_DMG:-0}"
-if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
-  FORCE_PLAIN_DMG=1
-fi
 
 mkdir -p "$DIST_DIR"
 
@@ -57,8 +54,13 @@ if [[ "$FORCE_PLAIN_DMG" != "1" ]] && command -v create-dmg >/dev/null 2>&1; the
     CREATE_DMG_ARGS+=(--background "$DMG_BACKGROUND_PATH")
   fi
 
-  create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$STAGING_DIR"
-else
+  if ! create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$STAGING_DIR"; then
+    echo "Warning: styled DMG generation failed, falling back to plain DMG."
+    FORCE_PLAIN_DMG=1
+  fi
+fi
+
+if [[ "$FORCE_PLAIN_DMG" == "1" ]]; then
   echo "Creating plain DMG with hdiutil..."
   if [[ ! -e "$STAGING_DIR/Applications" ]]; then
     ln -s /Applications "$STAGING_DIR/Applications"
@@ -69,6 +71,8 @@ else
     -ov \
     -format UDZO \
     "$DMG_PATH"
+else
+  echo "Styled DMG generated."
 fi
 
 echo ""
