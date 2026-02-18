@@ -9,6 +9,10 @@ final class AppViewModel: ObservableObject {
         static let themeDefaultMigrationV1 = "themeDefaultMigrationV1"
         static let themeDefaultMigrationV2 = "themeDefaultMigrationV2"
     }
+    private enum SecurityGuards {
+        static let maxChatQuestionLength = 4_000
+        static let maxAuditMessageLength = 180
+    }
 
     enum StartupPreparationPhase: Equatable {
         case idle
@@ -36,6 +40,12 @@ final class AppViewModel: ObservableObject {
         )
     }
 
+    struct PresentationError: Equatable, Identifiable {
+        var id = UUID()
+        var userMessage: String
+        var technicalDetail: String?
+    }
+
     @Published var settings: AppSettings = .default
     @Published var sessions: [SessionRecord] = []
     @Published var selectedSessionId: UUID?
@@ -47,13 +57,13 @@ final class AppViewModel: ObservableObject {
     @Published var recordingSessionName: String = ""
     @Published var activeSessionStatus: SessionStatus = .idle
     @Published var isBusy: Bool = false
-    @Published var transientError: String?
+    @Published var transientError: PresentationError?
     @Published var modelInstallState: ModelInstallationState?
     @Published var isLocalRuntimeReachable: Bool = true
-    @Published var localRuntimeStatusText: String = L10n.tr("status.local_ready_on_demand")
+    @Published var localRuntimeStatusText: String = L10n.tr("ui.status.local_runtime.ready_on_demand")
     @Published var isLocalTranscriptionHealthy: Bool = false
-    @Published var localTranscriptionStatusText: String = L10n.tr("status.not_checked")
-    @Published var localCaptureStatusText: String = L10n.tr("status.audio_unknown")
+    @Published var localTranscriptionStatusText: String = L10n.tr("ui.status.local_transcription.not_checked")
+    @Published var localCaptureStatusText: String = L10n.tr("ui.status.audio.unknown")
     @Published var localCaptureWarningText: String?
     @Published var isStoppingRecording: Bool = false
     @Published var liveWaveformSamples: [Double] = Array(repeating: 0.0, count: 48)
@@ -62,7 +72,7 @@ final class AppViewModel: ObservableObject {
     @Published var lmStudioInstalled: Bool = false
     @Published var lmStudioServerReachable: Bool = false
     @Published var lmStudioLoadedModels: [LMStudioLoadedModel] = []
-    @Published var lmStudioStatusText: String = L10n.tr("lmstudio.status.not_checked")
+    @Published var lmStudioStatusText: String = L10n.tr("ui.status.lmstudio.not_checked")
     @Published var lmStudioStatusDetail: String = ""
     @Published var isLMStudioChecking: Bool = false
 
@@ -186,13 +196,13 @@ final class AppViewModel: ObservableObject {
 
             startupPreparation = .idle
             if settings.transcriptionConfig.providerType == .localVoxtral {
-                localRuntimeStatusText = L10n.tr("status.local_ready_on_demand")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready_on_demand")
             } else {
-                localRuntimeStatusText = L10n.tr("status.not_used")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.not_used")
             }
             await refreshLMStudioRuntimeStatus()
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -221,14 +231,14 @@ final class AppViewModel: ObservableObject {
             let micPermission = Permissions.microphoneState()
             if micPermission != .granted {
                 throw AppError.providerUnavailable(
-                    reason: "Microfoon-permissie ontbreekt. Rond stap 1 van onboarding af."
+                    reason: L10n.tr("ui.error.onboarding.microphone_required")
                 )
             }
             if updatedSettings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem {
                 let screenPermission = await Permissions.refreshScreenCaptureState()
                 if screenPermission != .granted {
                     throw AppError.providerUnavailable(
-                        reason: "Screen Recording permissie ontbreekt. Rond stap 1 van onboarding af."
+                        reason: L10n.tr("ui.error.onboarding.screen_recording_required")
                     )
                 }
             }
@@ -252,17 +262,17 @@ final class AppViewModel: ObservableObject {
 
             startupPreparation = .idle
             if merged.transcriptionConfig.providerType == .localVoxtral {
-                localRuntimeStatusText = L10n.tr("status.local_ready_on_demand")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready_on_demand")
                 isLocalRuntimeReachable = true
             } else {
-                localRuntimeStatusText = L10n.tr("status.not_used")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.not_used")
                 isLocalRuntimeReachable = false
             }
-            localTranscriptionStatusText = L10n.tr("status.not_checked")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.not_checked")
             isLocalTranscriptionHealthy = false
             await refreshLMStudioRuntimeStatus()
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -273,7 +283,7 @@ final class AppViewModel: ObservableObject {
                 selectedSessionId = sessions.first?.id
             }
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -289,7 +299,7 @@ final class AppViewModel: ObservableObject {
                 recordingSessionName = name
             }
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -310,7 +320,7 @@ final class AppViewModel: ObservableObject {
             currentSummary = try await repository.latestSummary(sessionId: id)
             currentChatMessages = try await repository.listChatMessages(sessionId: id)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -335,7 +345,7 @@ final class AppViewModel: ObservableObject {
         do {
             try await ensureLocalFluidAudioPreparedIfNeeded()
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -344,22 +354,22 @@ final class AppViewModel: ObservableObject {
 
         if modelInstallState?.status == .ready {
             isLocalRuntimeReachable = true
-            localRuntimeStatusText = L10n.tr("status.local_ready")
-            localTranscriptionStatusText = L10n.tr("status.local_ready")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.ready")
             return
         }
 
         if isLocalModelPreparationInProgress {
             while isLocalModelPreparationInProgress {
                 if Task.isCancelled {
-                    throw AppError.providerUnavailable(reason: "Local model preparation was cancelled.")
+                    throw AppError.providerUnavailable(reason: L10n.tr("ui.error.local_model.preparation_cancelled"))
                 }
                 try? await Task.sleep(for: .milliseconds(200))
             }
             if modelInstallState?.status == .ready {
                 return
             }
-            let reason = modelInstallState?.lastError ?? "Local model preparation failed."
+            let reason = modelInstallState?.lastError ?? L10n.tr("ui.error.local_model.preparation_failed")
             throw AppError.providerUnavailable(reason: reason)
         }
 
@@ -378,8 +388,8 @@ final class AppViewModel: ObservableObject {
         )
         modelInstallState = downloadingState
         try? await repository.saveModelInstallState(downloadingState)
-        localRuntimeStatusText = L10n.tr("status.local_preparing")
-        localTranscriptionStatusText = L10n.tr("status.local_preparing")
+        localRuntimeStatusText = L10n.tr("ui.status.local_runtime.preparing")
+        localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.preparing")
 
         setStartupPreparation(
             phase: .installingModel,
@@ -402,8 +412,8 @@ final class AppViewModel: ObservableObject {
             try? await repository.saveModelInstallState(readyState)
             try? await repository.addAuditEvent(category: "model", message: "FluidAudio local models ready: \(modelRef.modelId)")
             isLocalRuntimeReachable = true
-            localRuntimeStatusText = L10n.tr("status.local_ready")
-            localTranscriptionStatusText = L10n.tr("status.local_ready")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.ready")
             setStartupPreparation(
                 phase: .ready,
                 progress: 1.0,
@@ -422,8 +432,8 @@ final class AppViewModel: ObservableObject {
             )
             modelInstallState = failedState
             try? await repository.saveModelInstallState(failedState)
-            localRuntimeStatusText = L10n.tr("status.error")
-            localTranscriptionStatusText = L10n.tr("status.error")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.error")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
             setStartupPreparation(
                 phase: .failed,
                 progress: max(startupPreparation.progress, 0.3),
@@ -438,12 +448,12 @@ final class AppViewModel: ObservableObject {
     func startRecording(with name: String? = nil) async {
         guard canStartRecording else { return }
         if isRecordingTemporarilyBlocked {
-            transientError = L10n.tr("startup.blocked.recording_not_ready")
+            transientError = presentationError(userMessage: L10n.tr("startup.blocked.recording_not_ready"))
             return
         }
         let candidate = (name ?? recordingSessionName).trimmingCharacters(in: .whitespacesAndNewlines)
         let sessionName = candidate.isEmpty
-            ? "Sessie \(Date().formatted(date: .abbreviated, time: .shortened))"
+            ? L10n.tr("ui.main.session.default_name", Date().formatted(date: .abbreviated, time: .shortened))
             : candidate
         var createdSessionId: UUID?
 
@@ -473,7 +483,7 @@ final class AppViewModel: ObservableObject {
             let provider = try pickTranscriptionProvider()
             activeProvider = provider
             isLocalTranscriptionHealthy = false
-            localTranscriptionStatusText = L10n.tr("status.connecting")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.connecting")
             try await provider.startSession(config: settings.transcriptionConfig, sessionId: session.id)
             audioEngine.configure(captureMode: settings.transcriptionConfig.audioCaptureMode)
             try await audioEngine.start()
@@ -520,7 +530,7 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            try await repository.addAuditEvent(category: "session", message: "Recording started for \(session.name)")
+            try await repository.addAuditEvent(category: "session", message: "Recording started")
             await refreshSessions()
         } catch {
             activeProvider = nil
@@ -535,9 +545,9 @@ final class AppViewModel: ObservableObject {
             waveformRenderTask?.cancel()
             waveformTargetLevel = 0
             waveformSmoothedLevel = 0
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
             isLocalTranscriptionHealthy = false
-            localTranscriptionStatusText = L10n.tr("status.error")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
             activeSessionStatus = .failed
             if let createdSessionId {
                 try? await repository.updateSessionStatus(sessionId: createdSessionId, status: .failed, endedAt: Date())
@@ -608,11 +618,11 @@ final class AppViewModel: ObservableObject {
             }
         } catch {
             activeSessionStatus = .failed
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
             isLocalTranscriptionHealthy = false
-            localTranscriptionStatusText = L10n.tr("status.error")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
             try? await repository.updateSessionStatus(sessionId: sessionId, status: .failed, endedAt: Date())
-            try? await repository.addAuditEvent(category: "session", message: "Recording failed: \(error.localizedDescription)")
+            try? await repository.addAuditEvent(category: "session", message: "Recording failed")
             activeProvider = nil
             recordingTimerTask?.cancel()
             recordingStartedAt = nil
@@ -649,7 +659,7 @@ final class AppViewModel: ObservableObject {
         }
         guard let summaryProvider else {
             if showUnavailableError {
-                transientError = L10n.tr("error.summary.provider_not_configured")
+                transientError = presentationError(userMessage: L10n.tr("error.summary.provider_not_configured"))
             }
             return
         }
@@ -663,12 +673,19 @@ final class AppViewModel: ObservableObject {
             try await repository.saveSummary(sessionId: sessionId, summary: summary)
             currentSummary = try await repository.latestSummary(sessionId: sessionId)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
     func sendChat(question: String) async {
-        guard let sessionId = selectedSessionId, !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let sessionId = selectedSessionId, !trimmedQuestion.isEmpty else {
+            return
+        }
+        guard trimmedQuestion.count <= SecurityGuards.maxChatQuestionLength else {
+            transientError = presentationError(
+                userMessage: L10n.tr("error.chat.question_too_long", SecurityGuards.maxChatQuestionLength)
+            )
             return
         }
 
@@ -677,7 +694,7 @@ final class AppViewModel: ObservableObject {
             threadId: threadIdForSession(sessionId),
             sessionId: sessionId,
             role: .user,
-            text: question,
+            text: trimmedQuestion,
             citations: [],
             createdAt: Date()
         )
@@ -705,7 +722,7 @@ final class AppViewModel: ObservableObject {
                 provider = LMStudioTranscriptChatProvider(repository: repository)
             }
 
-            let response = try await provider.answer(question: question, transcriptId: sessionId, strategy: .lexicalTopK)
+            let response = try await provider.answer(question: trimmedQuestion, transcriptId: sessionId, strategy: .lexicalTopK)
 
             let assistantMessage = ChatMessage(
                 id: UUID(),
@@ -720,7 +737,7 @@ final class AppViewModel: ObservableObject {
             try await repository.appendChatMessage(assistantMessage)
             currentChatMessages.append(assistantMessage)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -735,7 +752,7 @@ final class AppViewModel: ObservableObject {
             if newSettings.encryptionEnabled != previousEncryptionEnabled {
                 if newSettings.encryptionEnabled && !SQLCipherSupport.runtimeIsAvailable() {
                     throw AppError.invalidConfiguration(
-                        reason: "Database encryption requires SQLCipher runtime support, but SQLCipher is not available on this system."
+                        reason: L10n.tr("ui.error.security.sqlcipher_unavailable")
                     )
                 }
                 try DatabaseEncryptionStateStore().save(encryptionEnabled: newSettings.encryptionEnabled)
@@ -755,15 +772,15 @@ final class AppViewModel: ObservableObject {
             if let key = lmStudioApiKey, !key.isEmpty {
                 try keychain.set(key, key: normalized.lmStudioConfig.apiKeyRef)
             }
-            localTranscriptionStatusText = L10n.tr("status.not_checked")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.not_checked")
             isLocalTranscriptionHealthy = false
 
             startupPreparation = .idle
             if normalized.transcriptionConfig.providerType == .localVoxtral {
-                localRuntimeStatusText = L10n.tr("status.local_ready_on_demand")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready_on_demand")
                 isLocalRuntimeReachable = true
             } else {
-                localRuntimeStatusText = L10n.tr("status.not_used")
+                localRuntimeStatusText = L10n.tr("ui.status.local_runtime.not_used")
                 isLocalRuntimeReachable = false
             }
 
@@ -774,7 +791,7 @@ final class AppViewModel: ObservableObject {
             applyTheme(nil)
             await refreshLMStudioRuntimeStatus()
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -785,14 +802,14 @@ final class AppViewModel: ObservableObject {
         localCaptureWarningText = nil
         switch mode {
         case .microphoneOnly:
-            localCaptureStatusText = L10n.tr("status.audio_mic_only")
+            localCaptureStatusText = L10n.tr("ui.status.audio.microphone_only")
         case .microphoneAndSystem:
-            localCaptureStatusText = L10n.tr("status.audio_mic_system")
+            localCaptureStatusText = L10n.tr("ui.status.audio.microphone_and_system")
         }
         do {
             try await repository.saveSettings(settings)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -804,7 +821,7 @@ final class AppViewModel: ObservableObject {
             startupPreparation = .idle
             try await repository.saveSettings(updated)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
         }
     }
 
@@ -818,19 +835,19 @@ final class AppViewModel: ObservableObject {
         lmStudioLoadedModels = snapshot.loadedModels
 
         if snapshot.isInstalled == false {
-            lmStudioStatusText = L10n.tr("lmstudio.status.not_installed")
+            lmStudioStatusText = L10n.tr("ui.status.lmstudio.not_installed")
             lmStudioStatusDetail = ""
             return
         }
 
         if snapshot.isServerReachable == false {
-            lmStudioStatusText = L10n.tr("lmstudio.status.server_unreachable")
+            lmStudioStatusText = L10n.tr("ui.status.lmstudio.server_unreachable")
             lmStudioStatusDetail = snapshot.errorMessage ?? ""
             return
         }
 
         if snapshot.loadedModels.isEmpty {
-            lmStudioStatusText = L10n.tr("lmstudio.status.no_model_loaded")
+            lmStudioStatusText = L10n.tr("ui.status.lmstudio.no_model_loaded")
             lmStudioStatusDetail = ""
         } else {
             if settings.lmStudioConfig.selectedModelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -838,7 +855,7 @@ final class AppViewModel: ObservableObject {
                 settings.lmStudioConfig.selectedModelIdentifier = snapshot.loadedModels[0].identifier
                 try? await repository.saveSettings(settings)
             }
-            lmStudioStatusText = L10n.tr("lmstudio.status.ready")
+            lmStudioStatusText = L10n.tr("ui.status.lmstudio.ready")
             lmStudioStatusDetail = snapshot.loadedModels.map(\.displayName).joined(separator: ", ")
         }
     }
@@ -875,7 +892,7 @@ final class AppViewModel: ObservableObject {
         do {
             return try await exportService.export(session: session, format: format)
         } catch {
-            transientError = error.localizedDescription
+            transientError = userFacingErrorMessage(error)
             return nil
         }
     }
@@ -932,12 +949,12 @@ final class AppViewModel: ObservableObject {
 
     private func refreshCaptureStatusFromAudioEngine() {
         guard let hybrid = audioEngine as? HybridAudioCaptureEngine else {
-            localCaptureStatusText = L10n.tr("status.audio_active")
+            localCaptureStatusText = L10n.tr("ui.status.audio.active")
             localCaptureWarningText = nil
             return
         }
         let status = hybrid.captureStatusSummary()
-        localCaptureStatusText = "Audio \(status.mode)"
+        localCaptureStatusText = L10n.tr("ui.status.audio.mode", status.mode.localizedLabel)
         localCaptureWarningText = status.warning
     }
 
@@ -949,16 +966,16 @@ final class AppViewModel: ObservableObject {
                 return
             }
             isLocalRuntimeReachable = false
-            localRuntimeStatusText = L10n.tr("status.local_preparing")
-            localTranscriptionStatusText = L10n.tr("status.local_preparing")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.preparing")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.preparing")
         case .preparationProgress(let progress, let status, let step):
             if isLocalModelPreparationInProgress == false,
                modelInstallState?.status == .ready {
                 return
             }
             isLocalRuntimeReachable = false
-            localRuntimeStatusText = L10n.tr("status.local_preparing")
-            localTranscriptionStatusText = L10n.tr("status.local_preparing")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.preparing")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.preparing")
             let detail = localizedPreparationDetail(for: step)
             setStartupPreparation(
                 phase: .installingModel,
@@ -979,8 +996,8 @@ final class AppViewModel: ObservableObject {
             }
         case .preparationReady:
             isLocalRuntimeReachable = true
-            localRuntimeStatusText = L10n.tr("status.local_ready")
-            localTranscriptionStatusText = L10n.tr("status.local_ready")
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.ready")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.ready")
             if let modelId = settings.transcriptionConfig.localModelRef?.modelId {
                 modelInstallState = ModelInstallationState(
                     modelId: modelId,
@@ -999,25 +1016,31 @@ final class AppViewModel: ObservableObject {
             )
             scheduleStartupPreparationReset()
         case .inferenceStarted:
-            localTranscriptionStatusText = L10n.tr("status.local_processing")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.processing")
             isLocalTranscriptionHealthy = false
         case .inferenceCompleted:
             isLocalTranscriptionHealthy = true
-            localTranscriptionStatusText = L10n.tr("status.healthy")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.healthy")
         case .warning(let message):
             isLocalTranscriptionHealthy = false
-            localTranscriptionStatusText = L10n.tr("status.warning")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.warning")
             Task {
-                try? await repository.addAuditEvent(category: "local", message: message)
+                try? await repository.addAuditEvent(
+                    category: "local",
+                    message: sanitizedAuditMessage(message)
+                )
             }
         case .preparationFailed(let message):
             isLocalRuntimeReachable = false
             isLocalTranscriptionHealthy = false
-            localRuntimeStatusText = L10n.tr("status.error")
-            localTranscriptionStatusText = L10n.tr("status.error")
-            transientError = message
+            localRuntimeStatusText = L10n.tr("ui.status.local_runtime.error")
+            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
+            transientError = userFacingErrorMessage(AppError.providerUnavailable(reason: message))
             Task {
-                try? await repository.addAuditEvent(category: "local", message: message)
+                try? await repository.addAuditEvent(
+                    category: "local",
+                    message: sanitizedAuditMessage(message)
+                )
             }
         }
     }
@@ -1131,6 +1154,131 @@ final class AppViewModel: ObservableObject {
 
     private func syncResolvedLanguage() {
         L10n.setResolvedLanguageCode(resolvedAppLanguageCode)
+    }
+
+    private func userFacingErrorMessage(_ error: Error) -> PresentationError {
+        let technicalDetail = technicalDetailFromError(error)
+        if let appError = error as? AppError {
+            switch appError {
+            case .unsupportedHardware(let reason):
+                return presentationError(userMessage: reason, technicalDetail: technicalDetail)
+            case .providerUnavailable(let reason):
+                let userMessage = normalizedProviderUnavailableUserMessage(reason)
+                return presentationError(
+                    userMessage: userMessage,
+                    technicalDetail: userMessage == reason ? technicalDetail : sanitizedTechnicalDetail(reason)
+                )
+            case .invalidConfiguration:
+                return presentationError(
+                    userMessage: L10n.tr("error.safe.invalid_configuration"),
+                    technicalDetail: technicalDetail
+                )
+            case .storageFailure:
+                return presentationError(
+                    userMessage: L10n.tr("error.safe.storage_failure"),
+                    technicalDetail: technicalDetail
+                )
+            case .networkFailure:
+                return presentationError(
+                    userMessage: L10n.tr("error.safe.network_failure"),
+                    technicalDetail: technicalDetail
+                )
+            }
+        }
+        return presentationError(
+            userMessage: L10n.tr("error.safe.generic"),
+            technicalDetail: technicalDetail
+        )
+    }
+
+    private func sanitizedAuditMessage(_ message: String) -> String {
+        let compact = message.replacingOccurrences(
+            of: "\\s+",
+            with: " ",
+            options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard compact.count > SecurityGuards.maxAuditMessageLength else {
+            return compact
+        }
+        return String(compact.prefix(SecurityGuards.maxAuditMessageLength)) + "..."
+    }
+
+    private func normalizedProviderUnavailableUserMessage(_ reason: String) -> String {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return L10n.tr("ui.error.provider_unavailable_generic")
+        }
+        if looksLikeLocalizationKey(trimmed) || looksCrypticStatusText(trimmed) {
+            return L10n.tr("ui.error.provider_unavailable_generic")
+        }
+        return trimmed
+    }
+
+    private func looksLikeLocalizationKey(_ value: String) -> Bool {
+        value.range(
+            of: "^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$",
+            options: .regularExpression
+        ) != nil
+    }
+
+    private func looksCrypticStatusText(_ value: String) -> Bool {
+        if value.contains("status.") || value.contains(".0.") {
+            return true
+        }
+        if value.contains("connection.") || value.contains("network.") {
+            return true
+        }
+        return value.contains(".") && !value.contains(" ")
+    }
+
+    private func presentationError(userMessage: String, technicalDetail: String? = nil) -> PresentationError {
+        let detail = technicalDetail?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDetail = (detail?.isEmpty == false && detail != userMessage) ? detail : nil
+        return PresentationError(
+            userMessage: userMessage,
+            technicalDetail: normalizedDetail
+        )
+    }
+
+    private func technicalDetailFromError(_ error: Error) -> String? {
+        if let appError = error as? AppError {
+            switch appError {
+            case .unsupportedHardware(let reason),
+                 .invalidConfiguration(let reason),
+                 .storageFailure(let reason),
+                 .networkFailure(let reason),
+                 .providerUnavailable(let reason):
+                return sanitizedTechnicalDetail(reason)
+            }
+        }
+        return sanitizedTechnicalDetail(error.localizedDescription)
+    }
+
+    private func sanitizedTechnicalDetail(_ detail: String) -> String {
+        var sanitized = detail
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        sanitized = sanitized.replacingOccurrences(
+            of: "(?i)(bearer\\s+)[A-Za-z0-9\\-\\._~\\+/=]+",
+            with: "$1[REDACTED]",
+            options: .regularExpression
+        )
+        sanitized = sanitized.replacingOccurrences(
+            of: "(?i)(api[-_ ]?key\\s*[:=]\\s*)([^\\s,;]+)",
+            with: "$1[REDACTED]",
+            options: .regularExpression
+        )
+        sanitized = sanitized.replacingOccurrences(
+            of: "(?i)(password\\s*[:=]\\s*)([^\\s,;]+)",
+            with: "$1[REDACTED]",
+            options: .regularExpression
+        )
+
+        if sanitized.count > 220 {
+            sanitized = String(sanitized.prefix(220)) + "..."
+        }
+        return sanitized
     }
 
     private func setStartupPreparation(

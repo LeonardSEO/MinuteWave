@@ -19,11 +19,6 @@ private final class SystemAudioOutputBridge: NSObject, SCStreamOutput {
 }
 
 final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
-    enum CaptureMode: String {
-        case microphoneOnly = "Mic-only"
-        case microphoneAndSystem = "Mic + System"
-    }
-
     private enum Constants {
         static let sampleRate = 16_000
         static let channels = 1
@@ -51,7 +46,7 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
     private var systemConverterInputSignature: String?
     private var didLogFirstMicChunk: Bool = false
     private var desiredCaptureMode: LocalAudioCaptureMode = .microphoneAndSystem
-    private var captureMode: CaptureMode = .microphoneOnly
+    private var captureMode: LocalAudioCaptureMode = .microphoneOnly
     private var captureWarning: String?
 
     func configure(captureMode: LocalAudioCaptureMode) {
@@ -168,9 +163,9 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
         stateQueue.sync { streamPair.stream }
     }
 
-    func captureStatusSummary() -> (mode: String, warning: String?) {
+    func captureStatusSummary() -> (mode: LocalAudioCaptureMode, warning: String?) {
         stateQueue.sync {
-            (mode: captureMode.rawValue, warning: captureWarning)
+            (mode: captureMode, warning: captureWarning)
         }
     }
 

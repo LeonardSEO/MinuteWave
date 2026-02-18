@@ -577,3 +577,107 @@ func azureEndpointPasteParserRoundTrip() {
     #expect(result.transcriptionAPIVersion == "2024-06-01")
     #expect(result.usedTranslationsRoute == true)
 }
+
+@Test("L10n unresolved key fallback never returns raw key")
+func l10nUnresolvedKeyFallbackNeverLeaksRawKey() {
+    let rawKey = "ui.missing.translation.key"
+    let english = L10n.localizedString(for: rawKey, languageCode: "en")
+    let dutch = L10n.localizedString(for: rawKey, languageCode: "nl")
+
+    #expect(english != rawKey)
+    #expect(dutch != rawKey)
+    #expect(english == "Translation unavailable")
+    #expect(dutch == "Vertaling ontbreekt")
+}
+
+@Test("Localized display mappings follow selected app language")
+func localizedDisplayMappingsForDutchAndEnglish() {
+    let previousCode = L10n.resolvedLanguageCode()
+    defer { L10n.setResolvedLanguageCode(previousCode) }
+
+    L10n.setResolvedLanguageCode("nl")
+    #expect(SessionStatus.completed.localizedLabel == "Voltooid")
+    #expect(ChatMessage.Role.user.localizedLabel == "Gebruiker")
+    #expect(LocalAudioCaptureMode.microphoneOnly.localizedShortLabel == "Alleen microfoon")
+
+    L10n.setResolvedLanguageCode("en")
+    #expect(SessionStatus.completed.localizedLabel == "Completed")
+    #expect(ChatMessage.Role.user.localizedLabel == "User")
+    #expect(LocalAudioCaptureMode.microphoneOnly.localizedShortLabel == "Mic only")
+}
+
+@Test("Markdown summary parser falls back for malformed control input")
+func markdownSummaryParserFallback() {
+    #expect(MarkdownSummaryView.parseMarkdown("## Summary\n- one") != nil)
+    #expect(MarkdownSummaryView.parseMarkdown("broken\u{0000}markdown") == nil)
+}
+
+@Test("Localization coverage for used keys in en and nl")
+func localizationKeyCoverage() throws {
+    let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let sourceRoot = repoRoot.appendingPathComponent("Sources/AINoteTakerApp", isDirectory: true)
+    let enStrings = repoRoot.appendingPathComponent("Sources/AINoteTakerApp/Resources/en.lproj/Localizable.strings")
+    let nlStrings = repoRoot.appendingPathComponent("Sources/AINoteTakerApp/Resources/nl.lproj/Localizable.strings")
+
+    let usedKeys = try extractLocalizationKeys(fromSwiftFilesIn: sourceRoot)
+    let enKeys = try extractStringsKeys(from: enStrings)
+    let nlKeys = try extractStringsKeys(from: nlStrings)
+
+    let missingInEn = usedKeys.subtracting(enKeys)
+    let missingInNl = usedKeys.subtracting(nlKeys)
+    #expect(missingInEn.isEmpty, "Missing in en.lproj: \(missingInEn.sorted())")
+    #expect(missingInNl.isEmpty, "Missing in nl.lproj: \(missingInNl.sorted())")
+}
+
+private func extractLocalizationKeys(fromSwiftFilesIn root: URL) throws -> Set<String> {
+    let fm = FileManager.default
+    guard let enumerator = fm.enumerator(
+        at: root,
+        includingPropertiesForKeys: nil,
+        options: [.skipsHiddenFiles]
+    ) else {
+        return []
+    }
+
+    let l10nPattern = try NSRegularExpression(
+        pattern: #"L10n\.tr\(\s*"([^"]+)""#,
+        options: [.dotMatchesLineSeparators]
+    )
+    let localizedStringKeyPattern = try NSRegularExpression(
+        pattern: #"LocalizedStringKey\(\s*"([^"]+)""#,
+        options: [.dotMatchesLineSeparators]
+    )
+
+    var result = Set<String>()
+    for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+        let text = try String(contentsOf: fileURL, encoding: .utf8)
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        for match in l10nPattern.matches(in: text, options: [], range: fullRange) {
+            if let range = Range(match.range(at: 1), in: text) {
+                result.insert(String(text[range]))
+            }
+        }
+        for match in localizedStringKeyPattern.matches(in: text, options: [], range: fullRange) {
+            if let range = Range(match.range(at: 1), in: text) {
+                result.insert(String(text[range]))
+            }
+        }
+    }
+    return result
+}
+
+private func extractStringsKeys(from stringsFile: URL) throws -> Set<String> {
+    let content = try String(contentsOf: stringsFile, encoding: .utf8)
+    let pattern = try NSRegularExpression(pattern: #"^\s*"([^"]+)"\s*="#, options: [.anchorsMatchLines])
+    let fullRange = NSRange(content.startIndex..<content.endIndex, in: content)
+    var keys = Set<String>()
+    for match in pattern.matches(in: content, options: [], range: fullRange) {
+        if let range = Range(match.range(at: 1), in: content) {
+            keys.insert(String(content[range]))
+        }
+    }
+    return keys
+}

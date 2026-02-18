@@ -16,6 +16,10 @@ struct KeychainStore {
         Self.cacheLock.lock()
         defer { Self.cacheLock.unlock() }
         let cacheKey = cacheKey(key, service: service)
+        guard shouldCacheValue(for: key) else {
+            Self.inMemoryCache.removeValue(forKey: cacheKey)
+            return
+        }
         if let value {
             Self.inMemoryCache[cacheKey] = value
         } else {
@@ -24,9 +28,18 @@ struct KeychainStore {
     }
 
     private func cachedValue(for key: String, service: String = service) -> String? {
+        guard shouldCacheValue(for: key) else {
+            return nil
+        }
         Self.cacheLock.lock()
         defer { Self.cacheLock.unlock() }
         return Self.inMemoryCache[cacheKey(key, service: service)]
+    }
+
+    private func shouldCacheValue(for key: String) -> Bool {
+        let lowered = key.lowercased()
+        return lowered.contains("api-key") == false
+            && lowered.contains("database-key") == false
     }
 
     private func markLegacyMigrationAttempted(for key: String) {

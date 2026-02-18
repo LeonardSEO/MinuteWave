@@ -17,18 +17,22 @@ struct RootView: View {
             await viewModel.bootstrap()
         }
         .alert(
-            "Error",
+            L10n.tr("ui.error.title"),
             isPresented: Binding(
                 get: { viewModel.transientError != nil },
                 set: { if !$0 { viewModel.transientError = nil } }
             ),
             presenting: viewModel.transientError
         ) { _ in
-            Button("OK") {
+            Button(L10n.tr("ui.common.ok")) {
                 viewModel.transientError = nil
             }
-        } message: { message in
-            Text(message)
+        } message: { error in
+            if let detail = error.technicalDetail, !detail.isEmpty {
+                Text("\(error.userMessage)\n\n\(L10n.tr("ui.error.technical_detail_prefix")) \(detail)")
+            } else {
+                Text(error.userMessage)
+            }
         }
     }
 }

@@ -39,12 +39,7 @@ struct MainWorkspaceView: View {
     }
 
     private var captureModeText: String {
-        switch viewModel.settings.transcriptionConfig.audioCaptureMode {
-        case .microphoneOnly:
-            return "Capture Mic-only"
-        case .microphoneAndSystem:
-            return "Capture Mic + System"
-        }
+        viewModel.settings.transcriptionConfig.audioCaptureMode.localizedShortLabel
     }
 
     private var workspaceSurfaceColor: Color {
@@ -168,7 +163,7 @@ struct MainWorkspaceView: View {
                 HStack(spacing: 8) {
                     Spacer(minLength: 0)
                     Image(systemName: "plus")
-                    Text("Nieuwe sessie")
+                    Text(L10n.tr("ui.main.new_session"))
                     Spacer(minLength: 0)
                 }
                     .font(.subheadline.weight(.semibold))
@@ -204,7 +199,7 @@ struct MainWorkspaceView: View {
                     .font(.system(size: 14, weight: .medium))
 
                 NativeTextField(
-                    placeholder: "Zoek sessies",
+                    placeholder: L10n.tr("ui.main.search_sessions"),
                     text: $search,
                     isBorderless: true
                 )
@@ -250,7 +245,7 @@ struct MainWorkspaceView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "gearshape")
-                    Text("Settings")
+                    Text(L10n.tr("ui.common.settings"))
                     Spacer(minLength: 0)
                 }
                 .font(.subheadline.weight(.semibold))
@@ -274,18 +269,18 @@ struct MainWorkspaceView: View {
             HStack(spacing: 8) {
                 if isRenamingSession, let selected = selectedSession {
                     NativeTextField(
-                        placeholder: "Sessienaam",
+                        placeholder: L10n.tr("ui.main.session_name"),
                         text: $renameSessionInput,
                         onSubmit: { commitRename(selected.id) }
                     )
                     .frame(height: 30)
 
-                    Button("Save") {
+                    Button(L10n.tr("ui.common.save")) {
                         commitRename(selected.id)
                     }
                     .buttonStyle(.borderedProminent)
                 } else {
-                    Text(currentSessionName)
+                Text(currentSessionName)
                         .font(.title2.weight(.semibold))
                         .lineLimit(1)
 
@@ -307,10 +302,10 @@ struct MainWorkspaceView: View {
             liveWaveformBar
 
             HStack {
-                Text("Transcript")
+                Text(L10n.tr("ui.main.transcript"))
                     .font(.headline)
                 Spacer()
-                Button(isTranscriptCollapsed ? "Uitklappen" : "Inklappen") {
+                Button(isTranscriptCollapsed ? L10n.tr("ui.main.expand") : L10n.tr("ui.main.collapse")) {
                     isTranscriptCollapsed.toggle()
                 }
                 .buttonStyle(.bordered)
@@ -318,9 +313,9 @@ struct MainWorkspaceView: View {
 
             if isTranscriptCollapsed {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Transcript is ingeklapt.")
+                    Text(L10n.tr("ui.main.transcript_collapsed"))
                         .foregroundStyle(.secondary)
-                    Button("Volledige transcript tonen") {
+                    Button(L10n.tr("ui.main.show_full_transcript")) {
                         isTranscriptCollapsed = false
                     }
                     .buttonStyle(.borderless)
@@ -332,10 +327,10 @@ struct MainWorkspaceView: View {
                     HStack(spacing: 10) {
                         ProgressView()
                             .controlSize(.regular)
-                        Text("Transcript wordt verwerkt (incl. speaker herkenning)...")
+                        Text(L10n.tr("ui.main.transcript_processing"))
                             .foregroundStyle(.secondary)
                     }
-                    Text("Even geduld. De opname wordt afgerond en daarna zichtbaar.")
+                    Text(L10n.tr("ui.main.transcript_processing_detail"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -344,7 +339,7 @@ struct MainWorkspaceView: View {
             } else {
                 ScrollView {
                     if visibleTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Nog geen transcriptie beschikbaar.")
+                        Text(L10n.tr("ui.main.no_transcript_yet"))
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -369,22 +364,22 @@ struct MainWorkspaceView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 statusChip(
-                    text: viewModel.activeSessionStatus.rawValue.capitalized,
+                    text: viewModel.activeSessionStatus.localizedLabel,
                     color: statusColor,
                     systemImage: "dot.radiowaves.left.and.right"
                 )
 
                 statusChip(
-                    text: "Transcription \(viewModel.localTranscriptionStatusText)",
+                    text: L10n.tr("ui.main.transcription_status_chip", viewModel.localTranscriptionStatusText),
                     color: viewModel.isLocalTranscriptionHealthy ? .green : .secondary,
                     systemImage: "waveform.and.mic"
                 )
 
                 Menu {
-                    Button("Microfoon alleen") {
+                    Button(LocalAudioCaptureMode.microphoneOnly.localizedLabel) {
                         Task { await viewModel.updateAudioCaptureMode(.microphoneOnly) }
                     }
-                    Button("Microfoon + systeemaudio") {
+                    Button(LocalAudioCaptureMode.microphoneAndSystem.localizedLabel) {
                         Task { await viewModel.updateAudioCaptureMode(.microphoneAndSystem) }
                     }
                 } label: {
@@ -478,11 +473,11 @@ struct MainWorkspaceView: View {
 
     private var newSessionSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Nieuwe sessie")
+            Text(L10n.tr("ui.main.new_session"))
                 .font(.title3.weight(.semibold))
 
             NativeTextField(
-                placeholder: "Sessienaam",
+                placeholder: L10n.tr("ui.main.session_name"),
                 text: $draftSessionNameInput,
                 onSubmit: { createDraftSession() }
             )
@@ -490,10 +485,10 @@ struct MainWorkspaceView: View {
 
             HStack {
                 Spacer()
-                Button("Annuleer") {
+                Button(L10n.tr("ui.common.cancel")) {
                     showNewSessionSheet = false
                 }
-                Button("Doorgaan") {
+                Button(L10n.tr("ui.common.continue")) {
                     createDraftSession()
                 }
                 .buttonStyle(.borderedProminent)
@@ -544,16 +539,16 @@ struct MainWorkspaceView: View {
             summaryCard
 
             HStack {
-                Text("Chat met transcript")
+                Text(L10n.tr("ui.main.chat_with_transcript"))
                     .font(.headline)
                 Spacer()
                 if hasTranscript {
-                    Button("Summarize") {
+                    Button(L10n.tr("ui.main.summarize")) {
                         Task { await viewModel.generateSummaryIfAvailable() }
                     }
                     .buttonStyle(.bordered)
 
-                    Menu("Export") {
+                    Menu(L10n.tr("ui.main.export")) {
                         ForEach(ExportFormat.allCases) { format in
                             Button(format.rawValue.uppercased()) {
                                 Task {
@@ -570,7 +565,7 @@ struct MainWorkspaceView: View {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(viewModel.currentChatMessages) { message in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(message.role.rawValue.capitalized)
+                                Text(message.role.localizedLabel)
                                     .font(.caption.bold())
                                     .foregroundStyle(message.role == .assistant ? .mint : .secondary)
                                 Text(message.text)
@@ -588,7 +583,7 @@ struct MainWorkspaceView: View {
 
                 HStack(spacing: 10) {
                     NativeTextField(
-                        placeholder: "Chat met transcriptie",
+                        placeholder: L10n.tr("ui.main.chat_placeholder"),
                         text: $chatInput,
                         isBorderless: true,
                         onSubmit: { sendChatPrompt() }
@@ -615,15 +610,15 @@ struct MainWorkspaceView: View {
                 .background(.ultraThinMaterial, in: Capsule())
 
                 if let url = exportedURL {
-                    Text("Geexporteerd: \(url.lastPathComponent)")
+                    Text(L10n.tr("ui.main.exported_file", url.lastPathComponent))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Chat en export worden actief zodra je een transcriptie hebt afgerond.")
+                    Text(L10n.tr("ui.main.chat_export_hint"))
                         .foregroundStyle(.secondary)
-                    Text("Tip: Start met de microfoonknop, praat, en stop daarna.")
+                    Text(L10n.tr("ui.main.chat_export_tip"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -637,125 +632,118 @@ struct MainWorkspaceView: View {
         .padding(.bottom, 14)
     }
 
-    private func sendChatPrompt() {
-        let prompt = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
-        chatInput = ""
-        Task { await viewModel.sendChat(question: prompt) }
-    }
+private func sendChatPrompt() {
+    let prompt = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !prompt.isEmpty else { return }
+    chatInput = ""
+    Task { await viewModel.sendChat(question: prompt) }
+}
 
-    private var selectedSession: SessionRecord? {
-        guard let id = viewModel.selectedSessionId else { return nil }
-        return viewModel.sessions.first(where: { $0.id == id })
-    }
+private var selectedSession: SessionRecord? {
+    guard let id = viewModel.selectedSessionId else { return nil }
+    return viewModel.sessions.first(where: { $0.id == id })
+}
 
-    private var currentSessionName: String {
+private var currentSessionName: String {
+    if let session = selectedSession {
+        return session.name
+    }
+    let draft = viewModel.recordingSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+    return draft.isEmpty ? L10n.tr("ui.main.new_session") : draft
+}
+
+private func defaultSessionName() -> String {
+    L10n.tr("ui.main.session.default_name", Date().formatted(date: .abbreviated, time: .shortened))
+}
+
+private func sessionRow(_ session: SessionRecord) -> some View {
+    let isSelected = viewModel.selectedSessionId == session.id
+    let fillColor: Color = {
+        if isSelected {
+            return colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.10)
+        }
+        return .clear
+    }()
+
+    return VStack(alignment: .leading, spacing: 4) {
+        Text(session.name)
+            .font(.headline)
+            .lineLimit(1)
+        Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(fillColor)
+    )
+    .contentShape(Rectangle())
+}
+
+private static func mergeTranscriptText(from segments: [TranscriptSegment]) -> String {
+    segments
+        .sorted { $0.startMs < $1.startMs }
+        .map { segment in
+            let trimmedText = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedText.isEmpty else { return "" }
+            if let speaker = segment.speakerLabel, !speaker.isEmpty {
+                return "\(speaker): \(trimmedText)"
+            }
+            return trimmedText
+        }
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n")
+}
+
+private var sessionDetailsCard: some View {
+    VStack(alignment: .leading, spacing: 6) {
+        Text(L10n.tr("ui.main.session_details"))
+            .font(.headline)
+
         if let session = selectedSession {
-            return session.name
-        }
-        let draft = viewModel.recordingSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return draft.isEmpty ? "Nieuwe sessie" : draft
-    }
-
-    private func defaultSessionName() -> String {
-        "Sessie \(Date().formatted(date: .abbreviated, time: .shortened))"
-    }
-
-    private func sessionRow(_ session: SessionRecord) -> some View {
-        let isSelected = viewModel.selectedSessionId == session.id
-        let fillColor: Color = {
-            if isSelected {
-                return colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.10)
-            }
-            return .clear
-        }()
-
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(session.name)
-                .font(.headline)
-                .lineLimit(1)
-            Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.caption)
+            Text(L10n.tr("ui.main.session_details.name", session.name))
+            Text(L10n.tr("ui.main.session_details.provider", session.transcriptionProvider.localizedLabel))
+            Text(L10n.tr("ui.main.session_details.start", session.startedAt.formatted(date: .abbreviated, time: .shortened)))
+            Text(L10n.tr("ui.main.session_details.status", session.status.localizedLabel))
+        } else {
+            Text(L10n.tr("ui.main.no_session_selected"))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(fillColor)
-        )
-        .contentShape(Rectangle())
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .liquidGlassCard()
+}
 
-    private static func mergeTranscriptText(from segments: [TranscriptSegment]) -> String {
-        segments
-            .sorted { $0.startMs < $1.startMs }
-            .map { segment in
-                let trimmedText = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmedText.isEmpty else { return "" }
-                if let speaker = segment.speakerLabel, !speaker.isEmpty {
-                    return "\(speaker): \(trimmedText)"
-                }
-                return trimmedText
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-
-    private var sessionDetailsCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Sessiedetails")
-                .font(.headline)
-
-            if let session = selectedSession {
-                Text("Naam: \(session.name)")
-                Text("Provider: \(providerLabel(session.transcriptionProvider))")
-                Text("Start: \(session.startedAt.formatted(date: .abbreviated, time: .shortened))")
-                Text("Status: \(session.status.rawValue)")
-            } else {
-                Text("Geen sessie geselecteerd.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .liquidGlassCard()
-    }
-
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Samenvatting")
-                .font(.headline)
-            Text(viewModel.currentSummary?.executiveSummary ?? "Nog geen samenvatting beschikbaar.")
-                .lineLimit(8)
+private var summaryCard: some View {
+    VStack(alignment: .leading, spacing: 8) {
+        Text(L10n.tr("ui.main.summary"))
+            .font(.headline)
+        ScrollView {
+            MarkdownSummaryView(source: viewModel.currentSummary?.executiveSummary ?? L10n.tr("ui.main.no_summary_yet"))
                 .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .liquidGlassCard()
+        .frame(minHeight: 110, maxHeight: 250)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .liquidGlassCard()
+}
 
-    private var statusColor: Color {
-        switch viewModel.activeSessionStatus {
-        case .recording: return .red
-        case .paused: return .orange
-        case .finalizing: return .yellow
-        case .completed: return .green
-        case .failed: return .pink
-        case .idle: return .secondary
-        }
+private var statusColor: Color {
+    switch viewModel.activeSessionStatus {
+    case .recording: return .red
+    case .paused: return .orange
+    case .finalizing: return .yellow
+    case .completed: return .green
+    case .failed: return .pink
+    case .idle: return .secondary
     }
+}
 
-    private func providerLabel(_ provider: TranscriptionProviderType) -> String {
-        switch provider {
-        case .localVoxtral:
-            return "FluidAudio (Parakeet v3)"
-        case .azure:
-            return provider.rawValue
-        case .openAI:
-            return "openAI"
-        }
-    }
 }
 
 private struct SidebarLiquidGlassView: NSViewRepresentable {

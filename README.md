@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS-unsigned.dmg">
+  <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS.dmg">
     <img src="https://img.shields.io/badge/Download-Latest%20DMG-0A84FF?style=for-the-badge&logo=apple" alt="Download latest DMG" />
   </a>
 </p>
@@ -84,13 +84,13 @@ MinuteWave can work with:
 ## Install (DMG)
 
 1. Download: [Latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest)
-2. Open `MinuteWave-macOS-unsigned.dmg`
+2. Open `MinuteWave-macOS.dmg`
 3. Drag `MinuteWave.app` to `Applications`
-4. First launch (unsigned build): right-click app -> **Open**
+4. First launch: right-click app -> **Open**
 
-### Unsigned Build Behavior (Important)
+### Gatekeeper Behavior (Important)
 
-- `spctl --assess` returning `rejected` is expected for ad-hoc signed apps.
+- `spctl --assess` can still return `rejected` when builds are not notarized.
 - `codesign --verify` can still be valid while Gatekeeper rejects distribution trust.
 - If macOS blocks launch:
   1. Right-click app -> **Open**
@@ -114,10 +114,10 @@ Run tests:
 swift test
 ```
 
-Create unsigned DMG:
+Create DMG:
 
 ```bash
-./scripts/build_unsigned_dmg.sh release
+./scripts/build_dmg.sh release
 ```
 
 Optional: sign app bundle with a local identity before DMG build:
@@ -150,7 +150,7 @@ Transcript + metadata -> SQLite repository
 - Versioning format: `vMAJOR.MINOR.PATCH`.
 - App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
 - Release workflow: `.github/workflows/release.yml`.
-- On each tag push (example `v0.1.3`), GitHub Actions builds and publishes release assets.
+- On each tag push (example `v0.1.4`), GitHub Actions builds and publishes release assets.
 - Optional GitHub signing: configure repository secrets to sign release builds with Apple Development.
 
 ### GitHub Apple Development Signing (Optional)
@@ -169,8 +169,8 @@ base64 -i ~/Desktop/apple-development.p12 | pbcopy
 
 ## Current Release
 
-- `v0.1.3`
-- DMG asset: `MinuteWave-macOS-unsigned.dmg`
+- `v0.1.4`
+- DMG asset: `MinuteWave-macOS.dmg`
 
 ## Documentation
 

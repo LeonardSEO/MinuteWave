@@ -37,13 +37,13 @@ struct MinuteWaveApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandMenu("Recording") {
-                Button("Start") {
+            CommandMenu(L10n.tr("ui.main.recording_menu")) {
+                Button(L10n.tr("ui.main.recording_start")) {
                     Task { await viewModel.startRecording() }
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button("Stop") {
+                Button(L10n.tr("ui.main.recording_stop")) {
                     Task { await viewModel.stopRecording() }
                 }
                 .keyboardShortcut("s", modifiers: [.command])

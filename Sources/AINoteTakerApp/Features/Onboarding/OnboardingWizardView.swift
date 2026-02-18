@@ -18,7 +18,7 @@ struct OnboardingWizardView: View {
 
     private let caps = DeviceGuard.inspect()
     private var bundleIdentifierText: String {
-        Bundle.main.bundleIdentifier ?? "Missing"
+        Bundle.main.bundleIdentifier ?? L10n.tr("ui.onboarding.bundle_id_missing")
     }
     private var runningAsAppBundle: Bool {
         Bundle.main.bundleURL.pathExtension.lowercased() == "app"
@@ -37,10 +37,10 @@ struct OnboardingWizardView: View {
     var body: some View {
         VStack(spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("MinuteWave Setup")
+                Text(L10n.tr("ui.onboarding.title"))
                     .font(.title.weight(.semibold))
                     .foregroundStyle(.white)
-                Text("Stap \(step + 1) van 3")
+                Text(L10n.tr("ui.onboarding.step_of_total", step + 1, 3))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
             }
@@ -50,7 +50,7 @@ struct OnboardingWizardView: View {
                 .liquidGlassCard()
 
             HStack(spacing: 10) {
-                Button("Terug") {
+                Button(L10n.tr("ui.common.back")) {
                     step = max(0, step - 1)
                 }
                 .disabled(step == 0)
@@ -58,14 +58,14 @@ struct OnboardingWizardView: View {
                 Spacer()
 
                 if step < 2 {
-                    Button("Volgende") {
+                    Button(L10n.tr("ui.common.next")) {
                         guard canContinue else { return }
                         step = min(2, step + 1)
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canContinue)
                 } else {
-                    Button("Start app") {
+                    Button(L10n.tr("ui.onboarding.start_app")) {
                         guard canContinue else { return }
                         Task {
                             await viewModel.completeOnboarding(
@@ -159,23 +159,31 @@ struct OnboardingWizardView: View {
 
     private var requirementsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Systeem & permissies")
+            Text(L10n.tr("ui.onboarding.system_permissions"))
                 .font(.title2.weight(.semibold))
 
-            Label(caps.isAppleSilicon ? "Apple Silicon" : "Geen Apple Silicon", systemImage: caps.isAppleSilicon ? "checkmark.circle.fill" : "xmark.circle.fill")
+            Label(
+                caps.isAppleSilicon
+                    ? L10n.tr("ui.onboarding.apple_silicon")
+                    : L10n.tr("ui.onboarding.no_apple_silicon"),
+                systemImage: caps.isAppleSilicon ? "checkmark.circle.fill" : "xmark.circle.fill"
+            )
                 .foregroundStyle(caps.isAppleSilicon ? .green : .red)
 
-            Label("\(caps.physicalMemoryGB) GB RAM", systemImage: caps.physicalMemoryGB >= 16 ? "checkmark.circle.fill" : "xmark.circle.fill")
+            Label(
+                L10n.tr("ui.onboarding.ram_value", caps.physicalMemoryGB),
+                systemImage: caps.physicalMemoryGB >= 16 ? "checkmark.circle.fill" : "xmark.circle.fill"
+            )
                 .foregroundStyle(caps.physicalMemoryGB >= 16 ? .green : .red)
 
             Divider()
 
             HStack {
-                Text("Microfoon")
+                Text(L10n.tr("ui.onboarding.microphone"))
                 Spacer()
-                Text(micPermission.rawValue)
+                Text(micPermission.localizedLabel)
                     .foregroundStyle(micPermission == .granted ? .green : .secondary)
-                Button(micPermission == .denied ? "Open settings" : "Toestaan") {
+                Button(micPermission == .denied ? L10n.tr("ui.common.open_settings") : L10n.tr("ui.common.allow")) {
                     if micPermission == .denied {
                         Permissions.openMicrophoneSettings()
                     } else {
@@ -189,9 +197,9 @@ struct OnboardingWizardView: View {
             }
 
             HStack {
-                Text("Screen Recording (system audio)")
+                Text(L10n.tr("ui.onboarding.screen_recording"))
                 Spacer()
-                Text(screenPermission.rawValue)
+                Text(screenPermission.localizedLabel)
                     .foregroundStyle(screenPermission == .granted ? .green : .secondary)
                 Button(screenCaptureActionLabel) {
                     switch screenPermission {
@@ -209,30 +217,30 @@ struct OnboardingWizardView: View {
             }
 
             if !caps.meetsMinimumRequirements {
-                Text("Deze app vereist Apple Silicon en minimaal 16GB RAM.")
+                Text(L10n.tr("ui.onboarding.requirements_not_met"))
                     .foregroundStyle(.red)
             }
             if !permissionsSatisfied {
                 Text(requiresScreenPermission
-                     ? "Sta microfoon en Screen Recording toe voordat je verdergaat."
-                     : "Sta microfoon toe voordat je verdergaat.")
+                     ? L10n.tr("ui.onboarding.allow_mic_and_screen")
+                     : L10n.tr("ui.onboarding.allow_mic_only"))
                     .foregroundStyle(.orange)
             }
 
             Divider()
 
             HStack {
-                Text("Bundle ID")
+                Text(L10n.tr("ui.onboarding.bundle_id"))
                 Spacer()
                 Text(bundleIdentifierText)
                     .font(.caption)
-                    .foregroundStyle(bundleIdentifierText == "Missing" ? .orange : .secondary)
+                    .foregroundStyle(bundleIdentifierText == L10n.tr("ui.onboarding.bundle_id_missing") ? .orange : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
             if !runningAsAppBundle {
-                Text("Je draait nu niet als echte .app-bundle. Voor betrouwbare macOS permissieprompts: bouw en start via scripts/build_dev_app_bundle.sh.")
+                Text(L10n.tr("ui.onboarding.not_app_bundle_warning"))
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -242,20 +250,20 @@ struct OnboardingWizardView: View {
 
     private var transcriptionStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Transcriptie")
+            Text(L10n.tr("ui.onboarding.transcription"))
                 .font(.title2.weight(.semibold))
 
-            Picker("Engine", selection: $draftSettings.transcriptionConfig.providerType) {
-                Text("Lokaal (FluidAudio Parakeet v3)").tag(TranscriptionProviderType.localVoxtral)
-                Text("Cloud (Azure transcription)").tag(TranscriptionProviderType.azure)
-                Text("Cloud (OpenAI transcription)").tag(TranscriptionProviderType.openAI)
+            Picker(L10n.tr("ui.onboarding.engine"), selection: $draftSettings.transcriptionConfig.providerType) {
+                Text(L10n.tr("ui.onboarding.engine.local_fluidaudio")).tag(TranscriptionProviderType.localVoxtral)
+                Text(L10n.tr("ui.onboarding.engine.cloud_azure_transcription")).tag(TranscriptionProviderType.azure)
+                Text(L10n.tr("ui.onboarding.engine.cloud_openai_transcription")).tag(TranscriptionProviderType.openAI)
             }
             .pickerStyle(.radioGroup)
 
-            Toggle("Auto samenvatten na stop", isOn: $draftSettings.autoSummarizeAfterStop)
-            Toggle("Ingeklapte transcriptie als standaard", isOn: $draftSettings.transcriptDefaultCollapsed)
+            Toggle(L10n.tr("ui.settings.auto_summarize_after_stop"), isOn: $draftSettings.autoSummarizeAfterStop)
+            Toggle(L10n.tr("ui.settings.collapse_transcript_by_default"), isOn: $draftSettings.transcriptDefaultCollapsed)
 
-            Text("Bij lokaal gebruik worden modellen voorbereid bij de eerste opnamepoging.")
+            Text(L10n.tr("ui.onboarding.local_model_prep_hint"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -264,36 +272,36 @@ struct OnboardingWizardView: View {
 
     private var aiStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("AI (optioneel)")
+            Text(L10n.tr("ui.onboarding.ai_optional"))
                 .font(.title2.weight(.semibold))
 
-            Picker("Cloud provider voor samenvatting + chat", selection: $draftSettings.cloudProvider) {
-                Text("Azure OpenAI").tag(CloudProviderType.azureOpenAI)
-                Text("OpenAI").tag(CloudProviderType.openAI)
+            Picker(L10n.tr("ui.onboarding.cloud_provider_for_summary_chat"), selection: $draftSettings.cloudProvider) {
+                Text(CloudProviderType.azureOpenAI.localizedLabel).tag(CloudProviderType.azureOpenAI)
+                Text(CloudProviderType.openAI.localizedLabel).tag(CloudProviderType.openAI)
                 if viewModel.lmStudioInstalled {
-                    Text("LM Studio (Local)").tag(CloudProviderType.lmStudio)
+                    Text(CloudProviderType.lmStudio.localizedLabel).tag(CloudProviderType.lmStudio)
                 }
             }
             .pickerStyle(.segmented)
 
             if draftSettings.cloudProvider == .azureOpenAI || draftSettings.transcriptionConfig.providerType == .azure {
-                Text("Configureer Azure OpenAI voor samenvatten en chat met transcript.")
+                Text(L10n.tr("ui.onboarding.azure.configure_hint"))
                     .foregroundStyle(.secondary)
 
-                TextField("Endpoint (https://...openai.azure.com)", text: Binding(
+                TextField(L10n.tr("ui.onboarding.azure.endpoint"), text: Binding(
                     get: { draftSettings.azureConfig.endpoint },
                     set: { value in
                         draftSettings.azureConfig.endpoint = value
                         parseAndApplyAzureURLsIfNeeded(from: value)
                     }
                 ))
-                TextField("Chat API version", text: $draftSettings.azureConfig.chatAPIVersion)
-                TextField("Transcription API version", text: $draftSettings.azureConfig.transcriptionAPIVersion)
-                TextField("Chat deployment", text: $draftSettings.azureConfig.chatDeployment)
-                TextField("Summary deployment", text: $draftSettings.azureConfig.summaryDeployment)
-                TextField("Transcription deployment", text: $draftSettings.azureConfig.transcriptionDeployment)
-                SecureField("API key", text: $azureApiKeyInput)
-                Text("Bij de eerste keychain prompt: kies 'Always Allow' zodat je niet telkens opnieuw je wachtwoord hoeft in te vullen.")
+                TextField(L10n.tr("ui.settings.azure.chat_api_version"), text: $draftSettings.azureConfig.chatAPIVersion)
+                TextField(L10n.tr("ui.settings.azure.transcription_api_version"), text: $draftSettings.azureConfig.transcriptionAPIVersion)
+                TextField(L10n.tr("ui.settings.azure.chat_deployment"), text: $draftSettings.azureConfig.chatDeployment)
+                TextField(L10n.tr("ui.settings.azure.summary_deployment"), text: $draftSettings.azureConfig.summaryDeployment)
+                TextField(L10n.tr("ui.settings.azure.transcription_deployment"), text: $draftSettings.azureConfig.transcriptionDeployment)
+                SecureField(L10n.tr("ui.settings.api_key"), text: $azureApiKeyInput)
+                Text(L10n.tr("ui.settings.keychain_prompt_hint"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -305,28 +313,28 @@ struct OnboardingWizardView: View {
             }
 
             if draftSettings.cloudProvider == .openAI || draftSettings.transcriptionConfig.providerType == .openAI {
-                Text("Configureer OpenAI API voor samenvatten, chat en transcriptie.")
+                Text(L10n.tr("ui.onboarding.openai.configure_hint"))
                     .foregroundStyle(.secondary)
-                TextField("Base URL", text: $draftSettings.openAIConfig.baseURL)
-                TextField("Chat model", text: $draftSettings.openAIConfig.chatModel)
-                TextField("Summary model", text: $draftSettings.openAIConfig.summaryModel)
-                TextField("Transcription model", text: $draftSettings.openAIConfig.transcriptionModel)
-                SecureField("API key", text: $openAIApiKeyInput)
+                TextField(L10n.tr("ui.settings.openai.base_url"), text: $draftSettings.openAIConfig.baseURL)
+                TextField(L10n.tr("ui.settings.openai.chat_model"), text: $draftSettings.openAIConfig.chatModel)
+                TextField(L10n.tr("ui.settings.openai.summary_model"), text: $draftSettings.openAIConfig.summaryModel)
+                TextField(L10n.tr("ui.settings.openai.transcription_model"), text: $draftSettings.openAIConfig.transcriptionModel)
+                SecureField(L10n.tr("ui.settings.api_key"), text: $openAIApiKeyInput)
             }
 
             if draftSettings.cloudProvider == .lmStudio {
-                Text("Gebruik LM Studio lokaal voor samenvatten en chatten met transcript.")
+                Text(L10n.tr("ui.onboarding.lmstudio.configure_hint"))
                     .foregroundStyle(.secondary)
 
-                TextField("Endpoint", text: $draftSettings.lmStudioConfig.endpoint)
-                SecureField("API key (optioneel)", text: $lmStudioApiKeyInput)
+                TextField(L10n.tr("ui.settings.lmstudio.endpoint"), text: $draftSettings.lmStudioConfig.endpoint)
+                SecureField(L10n.tr("ui.settings.api_key_optional"), text: $lmStudioApiKeyInput)
 
                 if viewModel.lmStudioLoadedModels.isEmpty {
-                    Text("Laad eerst een model in LM Studio (Developer > Local Server).")
+                    Text(L10n.tr("ui.onboarding.lmstudio.load_model_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Picker("Loaded model", selection: $draftSettings.lmStudioConfig.selectedModelIdentifier) {
+                    Picker(L10n.tr("ui.settings.lmstudio.loaded_model"), selection: $draftSettings.lmStudioConfig.selectedModelIdentifier) {
                         ForEach(viewModel.lmStudioLoadedModels) { model in
                             Text(model.displayName).tag(model.identifier)
                         }
@@ -349,32 +357,32 @@ struct OnboardingWizardView: View {
                 }
 
                 HStack {
-                    Button("Refresh") {
+                    Button(L10n.tr("ui.common.refresh")) {
                         Task { await viewModel.refreshLMStudioRuntimeStatus() }
                     }
                     .buttonStyle(.bordered)
 
                     if viewModel.lmStudioInstalled {
-                        Button("Open LM Studio") {
+                        Button(L10n.tr("ui.settings.lmstudio.open")) {
                             viewModel.openLMStudioApp()
                         }
                         .buttonStyle(.bordered)
                     } else {
-                        Button("Install LM Studio") {
+                        Button(L10n.tr("ui.settings.lmstudio.install")) {
                             viewModel.openLMStudioDownloadPage()
                         }
                         .buttonStyle(.borderedProminent)
                     }
                 }
 
-                Text("RAM guidance: 16 GB+ recommended. MLX models work best on Apple Silicon.")
+                Text(L10n.tr("ui.onboarding.ram_guidance"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Link("LM Studio docs", destination: URL(string: "https://lmstudio.ai/docs/developer/rest")!)
+                Link(L10n.tr("ui.onboarding.lmstudio_docs"), destination: URL(string: "https://lmstudio.ai/docs/developer/rest")!)
                     .font(.caption)
             }
 
-            Text("Geavanceerde instellingen (samenvattingsprompt) staan in Settings > Advanced.")
+            Text(L10n.tr("ui.onboarding.advanced_settings_hint"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -393,11 +401,11 @@ struct OnboardingWizardView: View {
     private var screenCaptureActionLabel: String {
         switch screenPermission {
         case .granted:
-            return "Actief"
+            return L10n.tr("ui.onboarding.screen_recording.active")
         case .notDetermined:
-            return "Toestaan"
+            return L10n.tr("ui.common.allow")
         case .denied:
-            return "Open settings"
+            return L10n.tr("ui.common.open_settings")
         }
     }
 

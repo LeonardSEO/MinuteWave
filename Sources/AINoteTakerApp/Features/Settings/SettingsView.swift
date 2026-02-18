@@ -8,6 +8,17 @@ struct SettingsView: View {
         case advanced = "Advanced"
 
         var id: String { rawValue }
+
+        var localizedLabel: String {
+            switch self {
+            case .general:
+                return L10n.tr("ui.settings.tab.general")
+            case .ai:
+                return L10n.tr("ui.settings.tab.ai")
+            case .advanced:
+                return L10n.tr("ui.settings.tab.advanced")
+            }
+        }
     }
 
     @ObservedObject var viewModel: AppViewModel
@@ -23,12 +34,12 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
+            Text(L10n.tr("ui.settings.title"))
                 .font(.largeTitle.weight(.semibold))
 
-            Picker("Tab", selection: $selectedTab) {
+            Picker(L10n.tr("ui.settings.tab_label"), selection: $selectedTab) {
                 ForEach(Tab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tab.localizedLabel).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -46,9 +57,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             HStack {
-                Button("Cancel") { dismiss() }
+                Button(L10n.tr("ui.common.cancel")) { dismiss() }
                 Spacer()
-                Button("Save") {
+                Button(L10n.tr("ui.common.save")) {
                     Task {
                         await viewModel.saveSettings(
                             draft,
@@ -110,52 +121,52 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
-            Section("Appearance") {
-                Picker("Theme", selection: $draft.theme) {
+            Section(L10n.tr("ui.settings.section.appearance")) {
+                Picker(L10n.tr("ui.settings.theme"), selection: $draft.theme) {
                     ForEach(AppTheme.allCases) { theme in
-                        Text(theme.rawValue.capitalized).tag(theme)
+                        Text(theme.localizedLabel).tag(theme)
                     }
                 }
-                Picker("App language", selection: $draft.appLanguagePreference) {
-                    Text("System").tag(AppLanguagePreference.system)
-                    Text("Nederlands").tag(AppLanguagePreference.dutch)
-                    Text("English").tag(AppLanguagePreference.english)
+                Picker(L10n.tr("ui.settings.app_language"), selection: $draft.appLanguagePreference) {
+                    Text(AppLanguagePreference.system.localizedLabel).tag(AppLanguagePreference.system)
+                    Text(AppLanguagePreference.dutch.localizedLabel).tag(AppLanguagePreference.dutch)
+                    Text(AppLanguagePreference.english.localizedLabel).tag(AppLanguagePreference.english)
                 }
             }
 
-            Section("Transcript") {
-                Toggle("Collapse full transcript by default", isOn: $draft.transcriptDefaultCollapsed)
+            Section(L10n.tr("ui.settings.section.transcript")) {
+                Toggle(L10n.tr("ui.settings.collapse_transcript_by_default"), isOn: $draft.transcriptDefaultCollapsed)
             }
 
-            Section("Transcription") {
-                Picker("Provider", selection: $draft.transcriptionConfig.providerType) {
-                    Text("FluidAudio (Parakeet v3)").tag(TranscriptionProviderType.localVoxtral)
-                    Text("Azure OpenAI").tag(TranscriptionProviderType.azure)
-                    Text("OpenAI").tag(TranscriptionProviderType.openAI)
+            Section(L10n.tr("ui.settings.section.transcription")) {
+                Picker(L10n.tr("ui.common.provider"), selection: $draft.transcriptionConfig.providerType) {
+                    Text(TranscriptionProviderType.localVoxtral.localizedLabel).tag(TranscriptionProviderType.localVoxtral)
+                    Text(TranscriptionProviderType.azure.localizedLabel).tag(TranscriptionProviderType.azure)
+                    Text(TranscriptionProviderType.openAI.localizedLabel).tag(TranscriptionProviderType.openAI)
                 }
 
-                Picker("Audio capture", selection: $draft.transcriptionConfig.audioCaptureMode) {
-                    Text("Microfoon alleen").tag(LocalAudioCaptureMode.microphoneOnly)
-                    Text("Microfoon + systeemaudio").tag(LocalAudioCaptureMode.microphoneAndSystem)
+                Picker(L10n.tr("ui.settings.audio_capture"), selection: $draft.transcriptionConfig.audioCaptureMode) {
+                    Text(LocalAudioCaptureMode.microphoneOnly.localizedLabel).tag(LocalAudioCaptureMode.microphoneOnly)
+                    Text(LocalAudioCaptureMode.microphoneAndSystem.localizedLabel).tag(LocalAudioCaptureMode.microphoneAndSystem)
                 }
-                Text("Kies microfoon alleen voor face-to-face gesprekken. Kies microfoon + systeemaudio voor online meetings.")
+                Text(L10n.tr("ui.settings.audio_capture_help"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("Auto summarize after stop", isOn: $draft.autoSummarizeAfterStop)
+                Toggle(L10n.tr("ui.settings.auto_summarize_after_stop"), isOn: $draft.autoSummarizeAfterStop)
             }
 
-            Section("Lokale modelvoorbereiding") {
+            Section(L10n.tr("ui.settings.section.local_model_preparation")) {
                 HStack {
-                    Text("Local FluidAudio")
+                    Text(L10n.tr("ui.settings.local_fluidaudio"))
                     Spacer()
                     Text(viewModel.localRuntimeStatusText)
                         .foregroundStyle(viewModel.isLocalRuntimeReachable ? .green : .secondary)
                 }
-                Text("Modeldownload en initialisatie starten on-demand bij de eerste lokale opname.")
+                Text(L10n.tr("ui.settings.local_model_preparation_help"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Run onboarding again") {
+                Button(L10n.tr("ui.settings.run_onboarding_again")) {
                     Task {
                         await viewModel.resetOnboardingFlow()
                         dismiss()
@@ -168,30 +179,30 @@ struct SettingsView: View {
 
     private var aiTab: some View {
         Form {
-            Section("Cloud provider for summary + chat") {
-                Picker("Provider", selection: $draft.cloudProvider) {
-                    Text("Azure OpenAI").tag(CloudProviderType.azureOpenAI)
-                    Text("OpenAI").tag(CloudProviderType.openAI)
-                    Text("LM Studio (Local)").tag(CloudProviderType.lmStudio)
+            Section(L10n.tr("ui.settings.section.cloud_provider_for_summary_chat")) {
+                Picker(L10n.tr("ui.common.provider"), selection: $draft.cloudProvider) {
+                    Text(CloudProviderType.azureOpenAI.localizedLabel).tag(CloudProviderType.azureOpenAI)
+                    Text(CloudProviderType.openAI.localizedLabel).tag(CloudProviderType.openAI)
+                    Text(CloudProviderType.lmStudio.localizedLabel).tag(CloudProviderType.lmStudio)
                 }
             }
 
             if draft.cloudProvider == .azureOpenAI || draft.transcriptionConfig.providerType == .azure {
-                Section("Azure OpenAI") {
-                    TextField("Endpoint", text: Binding(
+                Section(L10n.tr("ui.common.provider.azure_openai")) {
+                    TextField(L10n.tr("ui.settings.azure.endpoint"), text: Binding(
                         get: { draft.azureConfig.endpoint },
                         set: { value in
                             draft.azureConfig.endpoint = value
                             parseAndApplyAzureURLsIfNeeded(from: value)
                         }
                     ))
-                    TextField("Chat API version", text: $draft.azureConfig.chatAPIVersion)
-                    TextField("Transcription API version", text: $draft.azureConfig.transcriptionAPIVersion)
-                    TextField("Chat deployment", text: $draft.azureConfig.chatDeployment)
-                    TextField("Summary deployment", text: $draft.azureConfig.summaryDeployment)
-                    TextField("Transcription deployment", text: $draft.azureConfig.transcriptionDeployment)
-                    SecureField("API key (optional update)", text: $azureApiKey)
-                    Text("Bij de eerste keychain prompt: kies 'Always Allow' zodat je niet telkens opnieuw je wachtwoord hoeft in te vullen.")
+                    TextField(L10n.tr("ui.settings.azure.chat_api_version"), text: $draft.azureConfig.chatAPIVersion)
+                    TextField(L10n.tr("ui.settings.azure.transcription_api_version"), text: $draft.azureConfig.transcriptionAPIVersion)
+                    TextField(L10n.tr("ui.settings.azure.chat_deployment"), text: $draft.azureConfig.chatDeployment)
+                    TextField(L10n.tr("ui.settings.azure.summary_deployment"), text: $draft.azureConfig.summaryDeployment)
+                    TextField(L10n.tr("ui.settings.azure.transcription_deployment"), text: $draft.azureConfig.transcriptionDeployment)
+                    SecureField(L10n.tr("ui.settings.api_key_optional_update"), text: $azureApiKey)
+                    Text(L10n.tr("ui.settings.keychain_prompt_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let azureParseFeedbackKey {
@@ -203,26 +214,26 @@ struct SettingsView: View {
             }
 
             if draft.cloudProvider == .openAI || draft.transcriptionConfig.providerType == .openAI {
-                Section("OpenAI") {
-                    TextField("Base URL", text: $draft.openAIConfig.baseURL)
-                    TextField("Chat model", text: $draft.openAIConfig.chatModel)
-                    TextField("Summary model", text: $draft.openAIConfig.summaryModel)
-                    TextField("Transcription model", text: $draft.openAIConfig.transcriptionModel)
-                    SecureField("API key (optional update)", text: $openAIApiKey)
+                Section(L10n.tr("ui.common.provider.openai")) {
+                    TextField(L10n.tr("ui.settings.openai.base_url"), text: $draft.openAIConfig.baseURL)
+                    TextField(L10n.tr("ui.settings.openai.chat_model"), text: $draft.openAIConfig.chatModel)
+                    TextField(L10n.tr("ui.settings.openai.summary_model"), text: $draft.openAIConfig.summaryModel)
+                    TextField(L10n.tr("ui.settings.openai.transcription_model"), text: $draft.openAIConfig.transcriptionModel)
+                    SecureField(L10n.tr("ui.settings.api_key_optional_update"), text: $openAIApiKey)
                 }
             }
 
             if draft.cloudProvider == .lmStudio {
-                Section("LM Studio (Local)") {
-                    TextField("Endpoint", text: $draft.lmStudioConfig.endpoint)
-                    SecureField("API key (optional update)", text: $lmStudioApiKey)
+                Section(L10n.tr("ui.common.provider.lmstudio_local")) {
+                    TextField(L10n.tr("ui.settings.lmstudio.endpoint"), text: $draft.lmStudioConfig.endpoint)
+                    SecureField(L10n.tr("ui.settings.api_key_optional_update"), text: $lmStudioApiKey)
 
                     if viewModel.lmStudioLoadedModels.isEmpty {
-                        Text("No loaded models detected. Load a model in LM Studio first.")
+                        Text(L10n.tr("ui.settings.lmstudio.no_loaded_models"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Loaded model", selection: $draft.lmStudioConfig.selectedModelIdentifier) {
+                        Picker(L10n.tr("ui.settings.lmstudio.loaded_model"), selection: $draft.lmStudioConfig.selectedModelIdentifier) {
                             ForEach(viewModel.lmStudioLoadedModels) { model in
                                 Text(model.displayName).tag(model.identifier)
                             }
@@ -245,38 +256,38 @@ struct SettingsView: View {
                     }
 
                     HStack {
-                        Button("Refresh status") {
+                        Button(L10n.tr("ui.settings.lmstudio.refresh_status")) {
                             Task { await viewModel.refreshLMStudioRuntimeStatus() }
                         }
                         .buttonStyle(.bordered)
 
                         if viewModel.lmStudioInstalled {
-                            Button("Open LM Studio") {
+                            Button(L10n.tr("ui.settings.lmstudio.open")) {
                                 viewModel.openLMStudioApp()
                             }
                             .buttonStyle(.bordered)
                         } else {
-                            Button("Install LM Studio") {
+                            Button(L10n.tr("ui.settings.lmstudio.install")) {
                                 viewModel.openLMStudioDownloadPage()
                             }
                             .buttonStyle(.borderedProminent)
                         }
                     }
 
-                    Text("Use LM Studio for local chat + summary. Transcription stays on FluidAudio/OpenAI/Azure.")
+                    Text(L10n.tr("ui.settings.lmstudio.help"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("Security") {
-                Toggle("Encryption enabled", isOn: $draft.encryptionEnabled)
+            Section(L10n.tr("ui.settings.section.security")) {
+                Toggle(L10n.tr("ui.settings.security.encryption_enabled"), isOn: $draft.encryptionEnabled)
                 if draft.encryptionEnabled != viewModel.settings.encryptionEnabled {
-                    Text("Wijziging wordt toegepast na herstart van de app.")
+                    Text(L10n.tr("ui.settings.security.change_after_restart"))
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-                Text("Storage: \(AppPaths.appSupportDirectory.path)")
+                Text(L10n.tr("ui.settings.security.storage_path", AppPaths.appSupportDirectory.path))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -285,7 +296,7 @@ struct SettingsView: View {
 
     private var advancedTab: some View {
         Form {
-            Section("Summary prompt") {
+            Section(L10n.tr("ui.settings.section.summary_prompt")) {
                 TextEditor(text: Binding(
                     get: { draft.summaryPrompt.template },
                     set: { draft.summaryPrompt = SummaryPrompt(template: $0) }

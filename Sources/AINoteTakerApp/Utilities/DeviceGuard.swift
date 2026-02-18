@@ -24,8 +24,11 @@ enum DeviceGuard {
     static func validateMinimumRequirements() throws {
         let caps = inspect()
         guard caps.meetsMinimumRequirements else {
+            let architecture = caps.isAppleSilicon
+                ? L10n.tr("ui.error.hardware.apple_silicon")
+                : L10n.tr("ui.error.hardware.intel")
             throw AppError.unsupportedHardware(
-                reason: "This app requires Apple Silicon and at least 16 GB RAM. Current: \(caps.isAppleSilicon ? "Apple Silicon" : "Intel") with \(caps.physicalMemoryGB) GB."
+                reason: L10n.tr("ui.error.hardware.minimum_requirements", architecture, caps.physicalMemoryGB)
             )
         }
     }
