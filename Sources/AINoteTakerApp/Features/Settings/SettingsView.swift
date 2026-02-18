@@ -138,22 +138,6 @@ struct SettingsView: View {
                 Toggle(L10n.tr("ui.settings.collapse_transcript_by_default"), isOn: $draft.transcriptDefaultCollapsed)
             }
 
-            Section(L10n.tr("ui.settings.section.updates")) {
-                Text(L10n.tr("ui.settings.updates.current_version", viewModel.appVersionLabel))
-                    .font(.callout)
-                Button(L10n.tr("ui.updates.check_for_updates")) {
-                    viewModel.checkForUpdates()
-                }
-                .buttonStyle(.bordered)
-                .disabled(!viewModel.updatesAvailable)
-
-                if !viewModel.updatesAvailable {
-                    Text(L10n.tr("ui.settings.updates.disabled_hint"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             Section(L10n.tr("ui.settings.section.transcription")) {
                 Picker(L10n.tr("ui.common.provider"), selection: $draft.transcriptionConfig.providerType) {
                     Text(TranscriptionProviderType.localVoxtral.localizedLabel).tag(TranscriptionProviderType.localVoxtral)

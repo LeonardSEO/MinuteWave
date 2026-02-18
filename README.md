@@ -151,7 +151,7 @@ Transcript + metadata -> SQLite repository
 - App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
 - Release workflow: `.github/workflows/release.yml`.
 - On each tag push (example `v0.1.4`), GitHub Actions builds and publishes release assets.
-- Sparkle auto-update checks run on app launch and then every 6 hours.
+- Optional GitHub signing: configure repository secrets to sign release builds with Apple Development.
 
 ### GitHub Apple Development Signing (Optional)
 
@@ -167,76 +167,10 @@ Create the base64 value locally:
 base64 -i ~/Desktop/apple-development.p12 | pbcopy
 ```
 
-### Sparkle Auto-Update Signing (Required For Release)
-
-MinuteWave uses Sparkle 2 for in-app updates from GitHub Releases.
-
-- App feed URL: `https://github.com/LeonardSEO/MinuteWave/releases/latest/download/appcast.xml`
-- Release assets for updates:
-  - `MinuteWave.app.zip`
-  - `appcast.xml`
-
-Generate Sparkle keys locally (first time):
-
-```bash
-brew install --cask sparkle
-SPARKLE_BIN_DIR="$(find "$(brew --prefix)/Caskroom/sparkle" -type d -path "*/bin" | sort | tail -n 1)"
-"$SPARKLE_BIN_DIR/generate_keys"
-```
-
-Print your public key:
-
-```bash
-SPARKLE_BIN_DIR="$(find "$(brew --prefix)/Caskroom/sparkle" -type d -path "*/bin" | sort | tail -n 1)"
-"$SPARKLE_BIN_DIR/generate_keys" -p
-```
-
-Export your private key (local file):
-
-```bash
-SPARKLE_BIN_DIR="$(find "$(brew --prefix)/Caskroom/sparkle" -type d -path "*/bin" | sort | tail -n 1)"
-"$SPARKLE_BIN_DIR/generate_keys" -x /tmp/sparkle_private_ed_key.txt
-```
-
-Encode the private key for GitHub secret storage:
-
-```bash
-base64 -i /tmp/sparkle_private_ed_key.txt | pbcopy
-```
-
-Set these repository secrets in GitHub:
-
-- `SPARKLE_PUBLIC_ED_KEY` (plain SUPublicEDKey value)
-- `SPARKLE_PRIVATE_ED_KEY_BASE64` (base64 of exported private key file)
-
-Release workflow behavior:
-
-- Fails fast for tag releases if Sparkle secrets are missing.
-- Injects `SPARKLE_PUBLIC_ED_KEY` into app `Info.plist` at build time.
-- Generates `MinuteWave.app.zip` and `appcast.xml` and publishes them to the tag release.
-
-### Sparkle Troubleshooting
-
-- If `Check for Updates...` is disabled in-app, verify `SUPublicEDKey` is set in the built app.
-- If release workflow fails in appcast generation, verify:
-  - private key secret is valid base64
-  - decoded key matches the configured public key
-- If users do not see updates, verify the latest release includes both `MinuteWave.app.zip` and `appcast.xml`.
-
-### Rollback Runbook
-
-If a bad update is published:
-
-1. Create a new hotfix release tag with a fixed build (preferred).
-2. If immediate rollback is required, upload a corrected `appcast.xml` to the latest release and point to the last known good `MinuteWave.app.zip`.
-3. Publish release notes explaining rollback scope and fixed version.
-4. After recovery, rotate Sparkle private key only if key compromise is suspected.
-
 ## Current Release
 
-- `v0.1.7`
+- `v0.1.8`
 - DMG asset: `MinuteWave-macOS.dmg`
-- Sparkle assets: `MinuteWave.app.zip`, `appcast.xml`
 
 ## Documentation
 

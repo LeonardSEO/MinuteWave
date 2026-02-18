@@ -340,9 +340,6 @@
 "ui.settings.section.summary_prompt" = "Summary prompt";
 "ui.settings.section.transcript" = "Transcript";
 "ui.settings.section.transcription" = "Transcription";
-"ui.settings.section.updates" = "Updates";
-"ui.settings.updates.current_version" = "Current version: %@";
-"ui.settings.updates.disabled_hint" = "Automatic updates are not configured for this build.";
 "ui.settings.security.change_after_restart" = "Change will be applied after app restart.";
 "ui.settings.security.encryption_enabled" = "Encryption enabled";
 "ui.settings.security.storage_path" = "Storage: %@";
@@ -355,7 +352,6 @@
 "ui.settings.theme.light" = "Light";
 "ui.settings.theme.system" = "System";
 "ui.settings.title" = "Settings";
-"ui.updates.check_for_updates" = "Check for Updates...";
 
 "ui.status.audio.active" = "Audio active";
 "ui.status.audio.microphone_and_system" = "Audio microphone + system";

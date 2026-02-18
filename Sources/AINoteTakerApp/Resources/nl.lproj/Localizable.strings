@@ -293,9 +293,6 @@
 "ui.settings.section.summary_prompt" = "Samenvattingsprompt";
 "ui.settings.section.transcript" = "Transcript";
 "ui.settings.section.transcription" = "Transcriptie";
-"ui.settings.section.updates" = "Updates";
-"ui.settings.updates.current_version" = "Huidige versie: %@";
-"ui.settings.updates.disabled_hint" = "Automatische updates zijn niet geconfigureerd voor deze build.";
 "ui.settings.security.change_after_restart" = "Wijziging wordt toegepast na herstart van de app.";
 "ui.settings.security.encryption_enabled" = "Encryptie ingeschakeld";
 "ui.settings.security.storage_path" = "Opslag: %@";
@@ -308,7 +305,6 @@
 "ui.settings.theme.light" = "Licht";
 "ui.settings.theme.system" = "Systeem";
 "ui.settings.title" = "Instellingen";
-"ui.updates.check_for_updates" = "Controleer op updates...";
 
 "ui.status.audio.active" = "Audio actief";
 "ui.status.audio.microphone_and_system" = "Audio microfoon + systeem";

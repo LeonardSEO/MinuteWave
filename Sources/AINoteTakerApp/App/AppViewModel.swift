@@ -75,7 +75,6 @@ final class AppViewModel: ObservableObject {
     @Published var lmStudioStatusText: String = L10n.tr("ui.status.lmstudio.not_checked")
     @Published var lmStudioStatusDetail: String = ""
     @Published var isLMStudioChecking: Bool = false
-    @Published var updatesAvailable: Bool = false
 
     private let repository: SessionRepository
     private let keychain: KeychainStore
@@ -96,7 +95,6 @@ final class AppViewModel: ObservableObject {
     private var recordingStartedAt: Date?
     private var waveformTargetLevel = 0.0
     private var waveformSmoothedLevel = 0.0
-    private weak var updateController: (any AppUpdateControlling)?
 
     var resolvedAppLanguageCode: String {
         AppLanguageResolver.resolveLanguageCode(preference: settings.appLanguagePreference)
@@ -104,12 +102,6 @@ final class AppViewModel: ObservableObject {
 
     var resolvedLocale: Locale {
         AppLanguageResolver.locale(for: resolvedAppLanguageCode)
-    }
-
-    var appVersionLabel: String {
-        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "v\(shortVersion) (\(build))"
     }
 
     var isRecordingTemporarilyBlocked: Bool {
@@ -212,15 +204,6 @@ final class AppViewModel: ObservableObject {
         } catch {
             transientError = userFacingErrorMessage(error)
         }
-    }
-
-    func attachUpdateController(_ controller: any AppUpdateControlling) {
-        updateController = controller
-        updatesAvailable = controller.isAvailable
-    }
-
-    func checkForUpdates() {
-        updateController?.checkForUpdates()
     }
 
     func applyTheme(_ appearance: NSAppearance?) {

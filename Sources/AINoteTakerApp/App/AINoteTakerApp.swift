@@ -48,14 +48,6 @@ struct MinuteWaveApp: App {
                 }
                 .keyboardShortcut("s", modifiers: [.command])
             }
-
-            CommandGroup(after: .appInfo) {
-                Button(L10n.tr("ui.updates.check_for_updates")) {
-                    appDelegate.checkForUpdates()
-                }
-                .keyboardShortcut("u", modifiers: [.command, .shift])
-                .disabled(!viewModel.updatesAvailable)
-            }
         }
     }
 }
