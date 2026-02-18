@@ -1,12 +1,25 @@
 import AppKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    weak var viewModel: AppViewModel?
+    weak var viewModel: AppViewModel? {
+        didSet {
+            if let updateService, let viewModel {
+                viewModel.attachUpdateController(updateService)
+            }
+        }
+    }
     private var isTerminationFlowInProgress = false
+    private var updateService: UpdateService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        let service = UpdateService()
+        updateService = service
+        viewModel?.attachUpdateController(service)
+        service.checkForUpdatesInBackground()
 
         DispatchQueue.main.async {
             for window in NSApp.windows {
@@ -68,5 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.toolbar = nil
         window.isMovableByWindowBackground = false
+    }
+
+    func checkForUpdates() {
+        updateService?.checkForUpdates()
     }
 }

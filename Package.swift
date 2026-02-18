@@ -11,13 +11,15 @@ let package = Package(
         .executable(name: "MinuteWave", targets: ["AINoteTakerApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.1")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.1"),
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.8.0")
     ],
     targets: [
         .executableTarget(
             name: "AINoteTakerApp",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/AINoteTakerApp",
             resources: [

@@ -25,6 +25,7 @@ ICON_ICNS_PATH="$ROOT_DIR/.build/MinuteWave.icns"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
 ENTITLEMENTS_PATH="${ENTITLEMENTS_PATH:-}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 
 if [[ ! -f "$PLIST_TEMPLATE_PATH" ]]; then
   echo "Info.plist template not found: $PLIST_TEMPLATE_PATH" >&2
@@ -47,6 +48,11 @@ mkdir -p "$FRAMEWORKS_DIR"
 
 cp "$EXECUTABLE_PATH" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 cp "$PLIST_TEMPLATE_PATH" "$APP_BUNDLE_PATH/Contents/Info.plist"
+
+if [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey $SPARKLE_PUBLIC_ED_KEY" "$APP_BUNDLE_PATH/Contents/Info.plist" \
+    || /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$APP_BUNDLE_PATH/Contents/Info.plist"
+fi
 
 if [[ -d "$RESOURCE_BUNDLE_PATH" ]]; then
   cp -R "$RESOURCE_BUNDLE_PATH" "$APP_BUNDLE_PATH/Contents/Resources/"
@@ -95,7 +101,32 @@ embed_sqlcipher_runtime() {
   fi
 }
 
+embed_sparkle_runtime() {
+  local linked_sparkle
+  linked_sparkle="$(otool -L "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | awk '/Sparkle\.framework/{print $1; exit}')"
+
+  if [[ -z "$linked_sparkle" ]]; then
+    return 0
+  fi
+
+  local sparkle_framework
+  sparkle_framework="$(find "$ROOT_DIR/.build" -type d -name Sparkle.framework | head -n 1)"
+  if [[ -z "$sparkle_framework" ]]; then
+    echo "Warning: Sparkle.framework was linked but not found in .build output."
+    return 0
+  fi
+
+  local embedded_sparkle="$FRAMEWORKS_DIR/Sparkle.framework"
+  rm -rf "$embedded_sparkle"
+  cp -R "$sparkle_framework" "$embedded_sparkle"
+
+  install_name_tool \
+    -change "$linked_sparkle" "@rpath/Sparkle.framework/Versions/B/Sparkle" \
+    "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" || true
+}
+
 embed_sqlcipher_runtime
+embed_sparkle_runtime
 
 if [[ -f "$ICON_SOURCE_PATH" ]]; then
   rm -rf "$ICONSET_DIR"
