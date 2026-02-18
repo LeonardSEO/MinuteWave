@@ -132,12 +132,15 @@ jobs:
           cp dist/MinuteWave.app.zip "$ARCHIVE_DIR/"
           DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
 
-          "$SPARKLE_BIN_DIR/generate_appcast" \
-            --ed-key-file "$SPARKLE_KEY_PATH" \
-            --download-url-prefix "$DOWNLOAD_PREFIX" \
-            --maximum-versions 1 \
-            -o appcast.xml \
-            "$ARCHIVE_DIR"
+          (
+            cd "$ARCHIVE_DIR"
+            "$SPARKLE_BIN_DIR/generate_appcast" \
+              --ed-key-file "$SPARKLE_KEY_PATH" \
+              --download-url-prefix "$DOWNLOAD_PREFIX" \
+              --maximum-versions 1 \
+              -o appcast.xml \
+              .
+          )
 
           cp "$ARCHIVE_DIR/appcast.xml" dist/appcast.xml
 
