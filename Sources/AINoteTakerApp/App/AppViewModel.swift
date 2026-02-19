@@ -131,6 +131,10 @@ final class AppViewModel: ObservableObject {
         return activeSessionStatus == .recording || activeSessionStatus == .paused
     }
 
+    var canChangeAudioCaptureMode: Bool {
+        Self.isAudioCaptureModeChangeAllowed(for: activeSessionStatus)
+    }
+
     var requiresTerminationConfirmation: Bool {
         activeSessionStatus == .recording || activeSessionStatus == .paused
     }
@@ -796,6 +800,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func updateAudioCaptureMode(_ mode: LocalAudioCaptureMode) async {
+        guard canChangeAudioCaptureMode else { return }
         guard settings.transcriptionConfig.audioCaptureMode != mode else { return }
         settings.transcriptionConfig.audioCaptureMode = mode
         audioEngine.configure(captureMode: mode)
@@ -810,6 +815,15 @@ final class AppViewModel: ObservableObject {
             try await repository.saveSettings(settings)
         } catch {
             transientError = userFacingErrorMessage(error)
+        }
+    }
+
+    nonisolated static func isAudioCaptureModeChangeAllowed(for status: SessionStatus) -> Bool {
+        switch status {
+        case .idle, .completed, .failed:
+            return true
+        case .recording, .paused, .finalizing:
+            return false
         }
     }
 

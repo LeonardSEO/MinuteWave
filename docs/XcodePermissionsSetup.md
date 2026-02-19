@@ -51,6 +51,11 @@ Daarna in macOS Settings:
 2. Privacy & Security -> Screen & System Audio Recording -> zet `MinuteWave` aan
 3. Sluit en heropen de app na ScreenCapture wijziging
 
+Belangrijk:
+
+- Runtime permissie-validatie is leidend. Onboardingstatus alleen is niet voldoende als macOS de wijziging nog niet actief heeft gemaakt.
+- Na wijziging van Screen Recording permissie blijft een herstart van `MinuteWave` vereist.
+
 ## 5) Verwacht gedrag
 
 1. Eerste opname triggert permissieprompt(s)

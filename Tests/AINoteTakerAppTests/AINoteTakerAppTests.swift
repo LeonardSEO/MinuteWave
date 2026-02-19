@@ -570,6 +570,24 @@ func waveformSmoothingDeterministic() {
     #expect(abs(falling - 0.74) < 0.0001)
 }
 
+@Test("Screen capture permission state resolver is deterministic")
+func screenCapturePermissionStateResolver() {
+    #expect(Permissions.resolveScreenCaptureState(preflightGranted: true, requestedBefore: false) == .granted)
+    #expect(Permissions.resolveScreenCaptureState(preflightGranted: true, requestedBefore: true) == .granted)
+    #expect(Permissions.resolveScreenCaptureState(preflightGranted: false, requestedBefore: false) == .notDetermined)
+    #expect(Permissions.resolveScreenCaptureState(preflightGranted: false, requestedBefore: true) == .denied)
+}
+
+@Test("Audio capture mode changes are blocked while recording-like statuses are active")
+func audioCaptureModeChangeAllowedByStatus() {
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .idle) == true)
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .completed) == true)
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .failed) == true)
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .recording) == false)
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .paused) == false)
+    #expect(AppViewModel.isAudioCaptureModeChangeAllowed(for: .finalizing) == false)
+}
+
 @Test("Language resolver respects system and explicit preferences")
 func appLanguageResolver() {
     #expect(

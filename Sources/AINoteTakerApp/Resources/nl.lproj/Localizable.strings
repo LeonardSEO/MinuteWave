@@ -260,6 +260,7 @@
 "ui.settings.app_language" = "App-taal";
 "ui.settings.audio_capture" = "Audio-opname";
 "ui.settings.audio_capture_help" = "Kies alleen microfoon voor face-to-face gesprekken. Kies microfoon + systeemaudio voor online vergaderingen.";
+"ui.settings.audio_capture_locked_recording" = "De audio-opnamemodus kan niet worden gewijzigd tijdens een actieve opname.";
 "ui.settings.auto_summarize_after_stop" = "Auto samenvatten na stop";
 "ui.settings.azure.chat_api_version" = "Chat API-versie";
 "ui.settings.azure.chat_deployment" = "Chat-deployment";

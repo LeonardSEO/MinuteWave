@@ -390,6 +390,7 @@ struct MainWorkspaceView: View {
                     )
                 }
                 .menuStyle(.borderlessButton)
+                .disabled(!viewModel.canChangeAudioCaptureMode)
             }
 
             if let warning = viewModel.localCaptureWarningText, !warning.isEmpty {

@@ -150,9 +150,15 @@ struct SettingsView: View {
                     Text(LocalAudioCaptureMode.microphoneOnly.localizedLabel).tag(LocalAudioCaptureMode.microphoneOnly)
                     Text(LocalAudioCaptureMode.microphoneAndSystem.localizedLabel).tag(LocalAudioCaptureMode.microphoneAndSystem)
                 }
+                .disabled(!viewModel.canChangeAudioCaptureMode)
                 Text(L10n.tr("ui.settings.audio_capture_help"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !viewModel.canChangeAudioCaptureMode {
+                    Text(L10n.tr("ui.settings.audio_capture_locked_recording"))
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
 
                 Toggle(L10n.tr("ui.settings.auto_summarize_after_stop"), isOn: $draft.autoSummarizeAfterStop)
             }

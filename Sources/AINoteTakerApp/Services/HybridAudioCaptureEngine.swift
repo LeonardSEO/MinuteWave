@@ -90,6 +90,16 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
                 return
             }
 
+            let screenPermission = await Permissions.refreshScreenCaptureState()
+            guard screenPermission == .granted else {
+                stateQueue.sync {
+                    captureMode = .microphoneOnly
+                    captureWarning = screenCapturePermissionGuidanceMessage()
+                }
+                NSLog("System audio capture skipped: Screen Recording permission not granted.")
+                return
+            }
+
             do {
                 try await startSystemAudioCapture()
                 stateQueue.sync {
@@ -415,9 +425,13 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
             || lowercased.contains("declined")
 
         if appearsPermissionRelated {
-            return "Systeemaudio is niet beschikbaar door Screen Recording permissie. Controleer macOS Settings > Privacy & Security > Screen Recording. Na inschakelen: herstart MinuteWave eenmalig, of kies 'Microfoon alleen'."
+            return screenCapturePermissionGuidanceMessage()
         }
 
         return "Systeemaudio kon niet starten (\(description)). De opname gaat verder met microfoon-only."
+    }
+
+    private func screenCapturePermissionGuidanceMessage() -> String {
+        "Systeemaudio is niet beschikbaar door Screen Recording permissie. Controleer macOS Settings > Privacy & Security > Screen Recording. Na inschakelen: herstart MinuteWave eenmalig, of kies 'Microfoon alleen'."
     }
 }

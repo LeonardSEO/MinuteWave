@@ -307,6 +307,7 @@
 "ui.settings.app_language" = "App language";
 "ui.settings.audio_capture" = "Audio capture";
 "ui.settings.audio_capture_help" = "Choose microphone only for in-person meetings. Choose microphone + system audio for online meetings.";
+"ui.settings.audio_capture_locked_recording" = "Audio capture mode cannot be changed while a recording is active.";
 "ui.settings.auto_summarize_after_stop" = "Auto-summarize after stop";
 "ui.settings.azure.chat_api_version" = "Chat API version";
 "ui.settings.azure.chat_deployment" = "Chat deployment";

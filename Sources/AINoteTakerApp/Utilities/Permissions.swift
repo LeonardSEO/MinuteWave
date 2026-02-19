@@ -12,7 +12,7 @@ enum PermissionState: String {
 
 enum Permissions {
     private static let screenCaptureRequestedKey = "permissions.screenCapture.requested"
-    private static let screenCaptureConfirmedKey = "permissions.screenCapture.confirmed"
+    private static let screenCaptureLegacyConfirmedKey = "permissions.screenCapture.confirmed"
 
     static func microphoneState() -> PermissionState {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -42,49 +42,52 @@ enum Permissions {
         }
     }
 
+    static func resolveScreenCaptureState(
+        preflightGranted: Bool,
+        requestedBefore: Bool
+    ) -> PermissionState {
+        if preflightGranted {
+            return .granted
+        }
+        return requestedBefore ? .denied : .notDetermined
+    }
+
     static func screenCaptureState() -> PermissionState {
-        if UserDefaults.standard.bool(forKey: screenCaptureConfirmedKey) {
-            return .granted
-        }
-        if CGPreflightScreenCaptureAccess() {
-            UserDefaults.standard.set(true, forKey: screenCaptureConfirmedKey)
-            return .granted
-        }
+        let preflightGranted = CGPreflightScreenCaptureAccess()
         let requested = UserDefaults.standard.bool(forKey: screenCaptureRequestedKey)
-        return requested ? .denied : .notDetermined
+        return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requested)
     }
 
     @MainActor
     static func refreshScreenCaptureState() async -> PermissionState {
-        let quick = screenCaptureState()
-        if quick == .granted {
+        let preflightGranted = CGPreflightScreenCaptureAccess()
+        if preflightGranted {
             return .granted
         }
+        let requestedBefore = UserDefaults.standard.bool(forKey: screenCaptureRequestedKey)
 
         guard #available(macOS 13.0, *) else {
-            return quick
+            return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requestedBefore)
         }
 
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             if !content.displays.isEmpty {
-                UserDefaults.standard.set(true, forKey: screenCaptureConfirmedKey)
                 return .granted
             }
         } catch {
             // Keep fallback state from quick check.
         }
 
-        return quick
+        return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requestedBefore)
     }
 
     static func requestScreenCapture() -> Bool {
         if CGPreflightScreenCaptureAccess() {
-            UserDefaults.standard.set(true, forKey: screenCaptureConfirmedKey)
             return true
         }
         UserDefaults.standard.set(true, forKey: screenCaptureRequestedKey)
-        UserDefaults.standard.set(false, forKey: screenCaptureConfirmedKey)
+        UserDefaults.standard.removeObject(forKey: screenCaptureLegacyConfirmedKey)
         return CGRequestScreenCaptureAccess()
     }
 
