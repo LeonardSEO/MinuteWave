@@ -4,6 +4,7 @@ import SwiftUI
 struct MinuteWaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var viewModel: AppViewModel
+    @StateObject private var updateService = GitHubUpdateService()
 
     init() {
         if Bundle.main.bundleIdentifier != nil {
@@ -31,12 +32,22 @@ struct MinuteWaveApp: App {
                 .background {
                     AppBackdropView()
                 }
+                .environmentObject(updateService)
                 .onAppear {
                     appDelegate.viewModel = viewModel
                 }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button(L10n.tr("ui.updates.menu.check_for_updates")) {
+                    Task {
+                        await updateService.checkForUpdates(userInitiated: true)
+                    }
+                }
+                .disabled(updateService.isChecking)
+            }
+
             CommandMenu(L10n.tr("ui.main.recording_menu")) {
                 Button(L10n.tr("ui.main.recording_start")) {
                     Task { await viewModel.startRecording() }

@@ -1,15 +1,21 @@
-# MinuteWave - Local-First AI Meeting Copilot for macOS
+<h1 align="center">
+  <br>
+  <img src="icon-clean.png" alt="MinuteWave logo" width="140" />
+  <br>
+  MinuteWave
+  <br>
+</h1>
 
 <p align="center">
-  <img src="icon-clean.png" alt="MinuteWave logo" width="220" />
+  <strong>Local-first AI meeting copilot for macOS.</strong>
 </p>
 
 <p align="center">
-  Record meetings, transcribe speech, separate speakers, generate summaries, and chat with your transcript.
+  Capture meeting audio, generate high-quality transcripts with speaker labels, create structured summaries, and chat with transcript-grounded citations.
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeonardSEO/MinuteWave/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/LeonardSEO/MinuteWave/release.yml?style=for-the-badge" alt="Release workflow status"></a>
+  <a href="https://github.com/LeonardSEO/MinuteWave/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/LeonardSEO/MinuteWave/release.yml?style=for-the-badge&label=Release" alt="Release workflow"></a>
   <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/v/release/LeonardSEO/MinuteWave?style=for-the-badge" alt="Latest release"></a>
   <a href="https://github.com/LeonardSEO/MinuteWave/releases"><img src="https://img.shields.io/github/downloads/LeonardSEO/MinuteWave/total?style=for-the-badge" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
@@ -17,164 +23,174 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS.dmg">
-    <img src="https://img.shields.io/badge/Download-Latest%20DMG-0A84FF?style=for-the-badge&logo=apple" alt="Download latest DMG" />
-  </a>
+  <a href="https://github.com/LeonardSEO/MinuteWave/releases/latest/download/MinuteWave-macOS.dmg"><strong>Download latest DMG</strong></a>
+  ·
+  <a href="docs/XcodePermissionsSetup.md"><strong>Permissions setup guide</strong></a>
 </p>
 
-## What MinuteWave Does
+## Why MinuteWave
 
-MinuteWave is a native SwiftUI macOS app focused on fast, private meeting workflows:
+MinuteWave is built for people who want native macOS meeting notes without a browser-first workflow:
 
-- Capture microphone and system audio.
-- Produce transcripts with speaker labels (diarization).
-- Generate clean meeting summaries.
-- Ask follow-up questions in transcript-aware chat.
-- Export results as `Markdown`, `TXT`, or `JSON`.
+- Local transcription path with FluidAudio (Parakeet v3 + offline diarization).
+- Cloud transcription options with Azure OpenAI or OpenAI.
+- Transcript-aware AI chat and summary generation.
+- Session persistence, export, and optional database encryption.
+- Native SwiftUI UI with onboarding, settings, and update checks.
 
-## Key Features
+## Feature Overview
 
-### Recording and Audio Capture
+| Area | What you get |
+| --- | --- |
+| Audio capture | `Microphone only` or `Microphone + system audio` capture modes |
+| Transcription | Local FluidAudio, Azure OpenAI Whisper, or OpenAI Whisper |
+| Speaker labels | Offline diarization in local FluidAudio mode |
+| Summary | Structured markdown summary generation from transcript content |
+| Transcript chat | Q&A with lexical retrieval and timestamp citations |
+| Export | `Markdown`, `TXT`, and `JSON` export per session |
+| Storage | Local SQLite session store + Keychain-backed secrets |
+| Security | Optional SQLCipher encryption mode with migration support |
+| UX | EN/NL app localization, onboarding wizard, update checker |
 
-- Native recording flow for macOS.
-- Two capture modes:
-  - `Microphone only`
-  - `Microphone + system audio`
-- Built-in elapsed timer and session management.
+### Provider Matrix
 
-### Transcription
+| Capability | Local FluidAudio | Azure OpenAI | OpenAI | LM Studio |
+| --- | --- | --- | --- | --- |
+| Transcription | Yes | Yes | Yes | No |
+| Summary | No | Yes | Yes | Yes |
+| Transcript chat | No | Yes | Yes | Yes |
+| API key required | No | Yes | Yes | Optional |
 
-- Local-first transcription using FluidAudio (`Parakeet TDT v3`) with offline diarization.
-- Cloud transcription options:
-  - Azure OpenAI
-  - OpenAI
-- Fallback behavior and provider health/status feedback in-app.
+## Architecture
 
-### Summaries and Transcript Chat
+```mermaid
+flowchart LR
+  A["Microphone"] --> B["HybridAudioCaptureEngine"]
+  C["System audio (optional)"] --> B
+  B --> D["Transcription provider"]
+  D --> E["SQLite session repository"]
+  E --> F["Summary provider"]
+  E --> G["Transcript chat + citations"]
+  E --> H["Export service (MD/TXT/JSON)"]
 
-- Generate executive summaries from completed transcripts.
-- Ask questions against transcript content with retrieval-based context selection.
-- Configurable summary prompt template.
+  subgraph Providers
+    D1["Local FluidAudio"]
+    D2["Azure OpenAI"]
+    D3["OpenAI"]
+  end
 
-### Integrations
+  subgraph Summary/Chat
+    S1["Azure OpenAI"]
+    S2["OpenAI"]
+    S3["LM Studio"]
+  end
 
-MinuteWave can work with:
+  D --- D1
+  D --- D2
+  D --- D3
+  F --- S1
+  F --- S2
+  F --- S3
+  G --- S1
+  G --- S2
+  G --- S3
+```
 
-- **Azure OpenAI**
-  - Configurable endpoint, API versions, and deployments for chat/summary/transcription.
-- **OpenAI API**
-  - Configurable base URL and models for chat/summary/transcription.
-- **LM Studio (local server)**
-  - Local endpoint for summary + transcript chat.
-  - Loaded model selection from running LM Studio instance.
+## System Requirements
 
-## Security and Privacy
-
-- Local transcription path available for privacy-sensitive workflows.
-- API secrets stored in macOS Keychain.
-- Optional SQLCipher-backed database encryption with migration support.
-- Session data stored locally (SQLite) under app support directories.
-
-## Requirements
-
-- macOS 14+
+- macOS `14+`
 - Apple Silicon Mac
-- 16 GB RAM recommended (and required by onboarding checks for full local workflow)
+- `16 GB RAM` minimum (enforced by onboarding checks)
+- Internet connection for cloud providers and first local model download
 
-## Install (DMG)
+## Installation (DMG)
 
-1. Download: [Latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest)
-2. Open `MinuteWave-macOS.dmg`
-3. Drag `MinuteWave.app` to `Applications`
-4. First launch: right-click app -> **Open**
+1. Download from [latest release](https://github.com/LeonardSEO/MinuteWave/releases/latest).
+2. Open `MinuteWave-macOS.dmg`.
+3. Drag `MinuteWave.app` to `Applications`.
+4. Start with right-click -> `Open` on first run.
 
-### Gatekeeper Behavior (Important)
+> [!IMPORTANT]
+> If Gatekeeper blocks launch, use one of these options:
+> 1. `System Settings -> Privacy & Security -> Open Anyway`
+> 2. `xattr -dr com.apple.quarantine "/Applications/MinuteWave.app"`
 
-- `spctl --assess` can still return `rejected` when builds are not notarized.
-- `codesign --verify` can still be valid while Gatekeeper rejects distribution trust.
-- If macOS blocks launch:
-  1. Right-click app -> **Open**
-  2. Or in terminal: `xattr -dr com.apple.quarantine "/Applications/MinuteWave.app"`
+## Quick Start
 
-### Code Signing Options
+1. Complete onboarding permissions (`Microphone`, and optionally `Screen Recording` for system audio capture).
+2. Choose your transcription provider (`Local (FluidAudio)` for local-first workflow, or `Azure`/`OpenAI` for cloud transcription).
+3. (Optional) Configure summary/chat provider (`Azure`, `OpenAI`, or `LM Studio`).
+4. Create a session, start recording, stop recording.
+5. Review transcript, generate summary, ask follow-up questions, export results.
 
-- **Free Apple ID / Personal Team (Xcode):** good for local development on your own Mac; not suitable for public distribution.
-- **Paid Apple Developer Program:** required for `Developer ID Application` signing + notarization for clean public install flow.
+## Privacy & Security
+
+- Session data is stored locally in `~/Library/Application Support/MinuteWave`.
+- API keys are stored in macOS Keychain.
+- Database encryption can be enabled in settings when SQLCipher runtime is available.
+- Encryption migrations (plaintext <-> SQLCipher) are built in.
+- Local FluidAudio mode keeps inference on-device after model preparation.
 
 ## Build From Source
 
+### Prerequisites
+
+- Xcode (latest stable)
+- Swift 6 toolchain
+- Homebrew packages:
+
+```bash
+brew install sqlcipher create-dmg
+```
+
+### Build and run
+
 ```bash
 swift build
+swift test
 swift run MinuteWave
 ```
 
-Run tests:
+For reliable macOS permission prompts, run as a real app bundle:
 
 ```bash
-swift test
+./scripts/build_dev_app_bundle.sh debug
+open ".build/AppBundle/MinuteWave.app"
 ```
 
-Create DMG:
+### Build DMG
 
 ```bash
 ./scripts/build_dmg.sh release
 ```
 
-Optional: sign app bundle with a local identity before DMG build:
+Optional signing:
 
 ```bash
 security find-identity -v -p codesigning
 SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build_dev_app_bundle.sh release
 ```
 
-## Architecture (High-Level)
+## Release and CI
 
-```text
-Mic + System Audio
-       |
-       v
-HybridAudioCaptureEngine
-       |
-       +--> Local FluidAudio (ASR + diarization)
-       +--> Azure/OpenAI transcription provider
+- Release workflow: `.github/workflows/release.yml`
+- Tag format: `vMAJOR.MINOR.PATCH`
+- Release artifacts: `MinuteWave-macOS.dmg`, `MinuteWave-macOS.dmg.sha256`
 
-Transcript + metadata -> SQLite repository
-                         |
-                         +--> Summary providers (Azure/OpenAI/LM Studio)
-                         +--> Transcript chat providers (Azure/OpenAI/LM Studio)
-                         +--> ExportService (MD/TXT/JSON)
-```
+## Troubleshooting
 
-## Versioning and Releases
-
-- Versioning format: `vMAJOR.MINOR.PATCH`.
-- App version source: `Sources/AINoteTakerApp/Resources/AppInfo.plist`.
-- Release workflow: `.github/workflows/release.yml`.
-- On each tag push (example `v0.1.4`), GitHub Actions builds and publishes release assets.
-- Optional GitHub signing: configure repository secrets to sign release builds with Apple Development.
-
-### GitHub Apple Development Signing (Optional)
-
-Set these repository secrets in GitHub:
-
-- `APPLE_DEV_CERT_P12_BASE64` (base64 of exported `.p12` certificate)
-- `APPLE_DEV_CERT_PASSWORD` (password used when exporting `.p12`)
-- `APPLE_DEV_SIGNING_IDENTITY` (example: `Apple Development: Leonard van Hemert (3RSGDZZR5Z)`)
-
-Create the base64 value locally:
+- Permission issues: see [`docs/XcodePermissionsSetup.md`](docs/XcodePermissionsSetup.md)
+- Reset TCC permissions:
 
 ```bash
-base64 -i ~/Desktop/apple-development.p12 | pbcopy
+./scripts/reset_tcc_permissions.sh
 ```
 
-## Current Release
+- LM Studio model not detected: refresh status in Settings -> `AI` tab and ensure at least one model is loaded.
 
-- `v0.1.9`
-- DMG asset: `MinuteWave-macOS.dmg`
+## Star History
 
-## Documentation
-
-- macOS permissions setup: `docs/XcodePermissionsSetup.md`
+[![Star History Chart](https://api.star-history.com/svg?repos=LeonardSEO/MinuteWave&type=date&legend=top-left)](https://www.star-history.com/#LeonardSEO/MinuteWave&type=date&legend=top-left)
 
 ## License
 

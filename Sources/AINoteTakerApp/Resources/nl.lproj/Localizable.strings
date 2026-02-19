@@ -305,6 +305,28 @@
 "ui.settings.theme.light" = "Licht";
 "ui.settings.theme.system" = "Systeem";
 "ui.settings.title" = "Instellingen";
+"ui.settings.section.updates" = "Updates";
+"ui.settings.updates.current_version" = "Huidige versie";
+"ui.settings.updates.latest_version" = "Nieuwste release";
+"ui.settings.updates.open_releases" = "Open releases";
+
+"ui.updates.menu.check_for_updates" = "Controleer op updates...";
+"ui.updates.status.available" = "Update beschikbaar: %@";
+"ui.updates.status.current" = "Je bent up-to-date (%@).";
+"ui.updates.alert.available.title" = "Update beschikbaar";
+"ui.updates.alert.available.message" = "Versie %@ is beschikbaar. Je gebruikt nu %@.";
+"ui.updates.alert.available.install" = "Open downloadpagina";
+"ui.updates.alert.available.later" = "Later";
+"ui.updates.alert.current.title" = "Up-to-date";
+"ui.updates.alert.current.message" = "Je gebruikt al de nieuwste versie (%@).";
+"ui.updates.alert.failed.title" = "Updatecheck mislukt";
+"ui.updates.alert.failed.open_releases" = "Open releases-pagina";
+"ui.updates.error.invalid_response" = "De release-respons van GitHub kon niet worden gelezen.";
+"ui.updates.error.http_status" = "GitHub API gaf statuscode %d terug.";
+"ui.updates.error.invalid_version" = "De nieuwste GitHub-tag heeft een niet-ondersteund versieformaat (%@).";
+"ui.updates.error.no_stable_release" = "Er is momenteel geen stabiele release beschikbaar.";
+"ui.updates.error.network" = "Netwerkfout tijdens updatecheck: %@";
+"ui.updates.error.generic" = "Updates controleren lukt nu niet.";
 
 "ui.status.audio.active" = "Audio actief";
 "ui.status.audio.microphone_and_system" = "Audio microfoon + systeem";

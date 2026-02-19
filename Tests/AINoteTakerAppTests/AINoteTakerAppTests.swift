@@ -112,6 +112,31 @@ func defaultSettingsRoundTrip() async throws {
     #expect(loaded.transcriptionConfig.providerType == settings.transcriptionConfig.providerType)
 }
 
+@Test("Semantic version parser normalizes Git tags")
+func semanticVersionParserNormalizesGitTags() {
+    #expect(AppSemanticVersion("v0.1.10-beta.1")?.description == "0.1.10")
+    #expect(AppSemanticVersion(" 1.2.3 ")?.description == "1.2.3")
+    #expect(AppSemanticVersion("release-1.2.3") == nil)
+}
+
+@Test("Semantic version comparison handles varying component lengths")
+func semanticVersionComparisonHandlesComponentLengths() {
+    guard
+        let v010 = AppSemanticVersion("0.1.10"),
+        let v019 = AppSemanticVersion("0.1.9"),
+        let v12 = AppSemanticVersion("1.2"),
+        let v120 = AppSemanticVersion("1.2.0"),
+        let v121 = AppSemanticVersion("1.2.1")
+    else {
+        Issue.record("Failed to parse one of the test semantic versions")
+        return
+    }
+
+    #expect(v010 > v019)
+    #expect(v12 == v120)
+    #expect(v12 < v121)
+}
+
 @Test("Session lifecycle")
 func sessionLifecycle() async throws {
     let tempDB = URL(fileURLWithPath: NSTemporaryDirectory())

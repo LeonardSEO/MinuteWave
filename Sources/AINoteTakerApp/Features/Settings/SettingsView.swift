@@ -22,6 +22,7 @@ struct SettingsView: View {
     }
 
     @ObservedObject var viewModel: AppViewModel
+    @EnvironmentObject private var updateService: GitHubUpdateService
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedTab: Tab = .general
@@ -173,6 +174,45 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.bordered)
+            }
+
+            Section(L10n.tr("ui.settings.section.updates")) {
+                HStack {
+                    Text(L10n.tr("ui.settings.updates.current_version"))
+                    Spacer()
+                    Text(updateService.currentVersion)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let latest = updateService.latestKnownVersion {
+                    HStack {
+                        Text(L10n.tr("ui.settings.updates.latest_version"))
+                        Spacer()
+                        Text(latest)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let status = updateService.lastStatusMessage {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(updateService.lastStatusIsError ? .orange : .secondary)
+                }
+
+                HStack {
+                    Button(L10n.tr("ui.updates.menu.check_for_updates")) {
+                        Task {
+                            await updateService.checkForUpdates(userInitiated: true)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(updateService.isChecking)
+
+                    Button(L10n.tr("ui.settings.updates.open_releases")) {
+                        updateService.openLatestReleasePage()
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
     }

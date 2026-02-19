@@ -352,6 +352,28 @@
 "ui.settings.theme.light" = "Light";
 "ui.settings.theme.system" = "System";
 "ui.settings.title" = "Settings";
+"ui.settings.section.updates" = "Updates";
+"ui.settings.updates.current_version" = "Current version";
+"ui.settings.updates.latest_version" = "Latest release";
+"ui.settings.updates.open_releases" = "Open releases";
+
+"ui.updates.menu.check_for_updates" = "Check for Updates...";
+"ui.updates.status.available" = "Update available: %@";
+"ui.updates.status.current" = "You are up to date (%@).";
+"ui.updates.alert.available.title" = "Update available";
+"ui.updates.alert.available.message" = "Version %@ is available. You are on %@.";
+"ui.updates.alert.available.install" = "Open download page";
+"ui.updates.alert.available.later" = "Later";
+"ui.updates.alert.current.title" = "Up to date";
+"ui.updates.alert.current.message" = "You are already on the latest version (%@).";
+"ui.updates.alert.failed.title" = "Update check failed";
+"ui.updates.alert.failed.open_releases" = "Open releases page";
+"ui.updates.error.invalid_response" = "Could not read the release response from GitHub.";
+"ui.updates.error.http_status" = "GitHub API responded with status code %d.";
+"ui.updates.error.invalid_version" = "Latest GitHub tag has an unsupported version format (%@).";
+"ui.updates.error.no_stable_release" = "No stable release is currently available.";
+"ui.updates.error.network" = "Network error while checking updates: %@";
+"ui.updates.error.generic" = "Could not check for updates right now.";
 
 "ui.status.audio.active" = "Audio active";
 "ui.status.audio.microphone_and_system" = "Audio microphone + system";
