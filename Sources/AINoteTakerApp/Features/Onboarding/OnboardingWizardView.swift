@@ -29,9 +29,11 @@ struct OnboardingWizardView: View {
     }
 
     private var permissionsSatisfied: Bool {
-        let micOk = micPermission == .granted
-        let screenOk = !requiresScreenPermission || screenPermission == .granted
-        return micOk && screenOk
+        micPermission == .granted
+    }
+
+    private var screenPermissionMissingForSelectedMode: Bool {
+        requiresScreenPermission && screenPermission != .granted
     }
 
     var body: some View {
@@ -220,10 +222,12 @@ struct OnboardingWizardView: View {
                 Text(L10n.tr("ui.onboarding.requirements_not_met"))
                     .foregroundStyle(.red)
             }
-            if !permissionsSatisfied {
-                Text(requiresScreenPermission
-                     ? L10n.tr("ui.onboarding.allow_mic_and_screen")
-                     : L10n.tr("ui.onboarding.allow_mic_only"))
+            if micPermission != .granted {
+                Text(L10n.tr("ui.onboarding.allow_mic_only"))
+                    .foregroundStyle(.orange)
+            }
+            if screenPermissionMissingForSelectedMode {
+                Text(L10n.tr("ui.onboarding.screen_optional_fallback"))
                     .foregroundStyle(.orange)
             }
 
@@ -259,6 +263,14 @@ struct OnboardingWizardView: View {
                 Text(L10n.tr("ui.onboarding.engine.cloud_openai_transcription")).tag(TranscriptionProviderType.openAI)
             }
             .pickerStyle(.radioGroup)
+
+            Picker(L10n.tr("ui.settings.audio_capture"), selection: $draftSettings.transcriptionConfig.audioCaptureMode) {
+                Text(LocalAudioCaptureMode.microphoneOnly.localizedLabel).tag(LocalAudioCaptureMode.microphoneOnly)
+                Text(LocalAudioCaptureMode.microphoneAndSystem.localizedLabel).tag(LocalAudioCaptureMode.microphoneAndSystem)
+            }
+            Text(L10n.tr("ui.settings.audio_capture_help"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Toggle(L10n.tr("ui.settings.auto_summarize_after_stop"), isOn: $draftSettings.autoSummarizeAfterStop)
             Toggle(L10n.tr("ui.settings.collapse_transcript_by_default"), isOn: $draftSettings.transcriptDefaultCollapsed)

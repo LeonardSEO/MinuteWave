@@ -169,7 +169,7 @@ final class AppViewModel: ObservableObject {
             let loaded = try await repository.loadSettings()
             var normalized = normalizeSettings(loaded)
             if normalized.onboardingCompleted {
-                let requirementsMet = await onboardingRequirementsSatisfied(for: normalized)
+                let requirementsMet = onboardingRequirementsSatisfied()
                 if !requirementsMet {
                     normalized.onboardingCompleted = false
                 }
@@ -237,14 +237,6 @@ final class AppViewModel: ObservableObject {
                 throw AppError.providerUnavailable(
                     reason: L10n.tr("ui.error.onboarding.microphone_required")
                 )
-            }
-            if updatedSettings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem {
-                let screenPermission = await Permissions.refreshScreenCaptureState()
-                if screenPermission != .granted {
-                    throw AppError.providerUnavailable(
-                        reason: L10n.tr("ui.error.onboarding.screen_recording_required")
-                    )
-                }
             }
 
             var merged = normalizeSettings(updatedSettings)
@@ -1329,13 +1321,11 @@ final class AppViewModel: ObservableObject {
         return interrupted.count
     }
 
-    private func onboardingRequirementsSatisfied(for settings: AppSettings) async -> Bool {
+    private func onboardingRequirementsSatisfied() -> Bool {
         let micGranted = Permissions.microphoneState() == .granted
         guard micGranted else { return false }
-
-        if settings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem {
-            return await Permissions.refreshScreenCaptureState() == .granted
-        }
+        // Screen Recording is optional for onboarding because runtime can safely
+        // fall back to microphone-only capture.
         return true
     }
 
