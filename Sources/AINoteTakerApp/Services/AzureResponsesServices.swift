@@ -73,8 +73,9 @@ struct AzureResponsesClient {
         case 429:
             throw AppError.networkFailure(reason: "Azure rate limit reached (429).")
         default:
-            let serverText = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: "Azure error \(http.statusCode): \(serverText)")
+            throw AppError.networkFailure(
+                reason: "Azure error \(http.statusCode): \(L10n.tr("error.safe.network_failure"))"
+            )
         }
 
         return extractChatCompletionText(data: data)

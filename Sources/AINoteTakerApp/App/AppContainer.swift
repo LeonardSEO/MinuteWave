@@ -20,8 +20,13 @@ final class AppContainer {
     private init() throws {
         try FileManager.default.createDirectory(at: AppPaths.appSupportDirectory, withIntermediateDirectories: true)
 
+        let registryResolution = ModelRegistryPolicy.applyGlobalPolicy()
+        if let warning = registryResolution.warning {
+            AppLogger.security.warning("\(warning, privacy: .public)")
+        }
+
         let encryptionStore = DatabaseEncryptionStateStore()
-        var encryptionEnabled = encryptionStore.load(defaultValue: false)
+        var encryptionEnabled = encryptionStore.load(defaultValue: true)
         let sqlCipherAvailable = SQLCipherSupport.runtimeIsAvailable()
         let databaseFormat = DatabaseFormatInspector.inspect(at: AppPaths.databaseURL)
         var encryptionMode: DatabaseEncryptionMode = .disabled
@@ -45,7 +50,9 @@ final class AppContainer {
                 }
                 encryptionEnabled = false
                 try? encryptionStore.save(encryptionEnabled: false)
-                AppLogger.security.error("SQLCipher runtime not available; database encryption disabled.")
+                AppLogger.security.error(
+                    "SQLCipher runtime unavailable at startup; falling back to plaintext storage and forcing encryptionEnabled=false."
+                )
             }
         } else if databaseFormat == .nonSQLite {
             guard sqlCipherAvailable else {

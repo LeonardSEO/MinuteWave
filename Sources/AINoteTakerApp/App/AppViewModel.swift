@@ -1395,6 +1395,9 @@ final class AppViewModel: ObservableObject {
         let persistedEncryptionFlag = DatabaseEncryptionStateStore().load(defaultValue: normalized.encryptionEnabled)
         normalized.encryptionEnabled = persistedEncryptionFlag
         if normalized.encryptionEnabled && !SQLCipherSupport.runtimeIsAvailable() {
+            AppLogger.security.warning(
+                "SQLCipher runtime unavailable during settings normalization; forcing encryptionEnabled=false."
+            )
             normalized.encryptionEnabled = false
             try? DatabaseEncryptionStateStore().save(encryptionEnabled: false)
         }

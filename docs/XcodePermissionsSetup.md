@@ -55,6 +55,7 @@ Belangrijk:
 
 - Runtime permissie-validatie is leidend. Onboardingstatus alleen is niet voldoende als macOS de wijziging nog niet actief heeft gemaakt.
 - Na wijziging van Screen Recording permissie blijft een herstart van `MinuteWave` vereist.
+- Geen app-side Screen Recording permissiecache meer: bron van waarheid is macOS TCC (`CGPreflightScreenCaptureAccess`) plus ScreenCaptureKit probe (`SCShareableContent`).
 
 ## 5) Verwacht gedrag
 
@@ -73,3 +74,4 @@ Opmerking signing:
 
 - `scripts/build_dev_app_bundle.sh` gebruikt voor ad-hoc builds een stabiele designated requirement op basis van `CFBundleIdentifier`, zodat permissies beter mee kunnen gaan tussen lokale updates.
 - Voor distributie/release blijft een echte signing identity (Apple Development / Developer ID) aanbevolen.
+- De release-workflow vereist signing secrets; zonder secrets faalt de CI-run en wordt geen ad-hoc DMG gepubliceerd.

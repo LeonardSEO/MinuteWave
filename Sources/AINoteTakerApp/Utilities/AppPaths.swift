@@ -21,4 +21,8 @@ enum AppPaths {
     static var exportsDirectory: URL {
         appSupportDirectory.appendingPathComponent("Exports", isDirectory: true)
     }
+
+    static var fluidAudioIntegrityManifestURL: URL {
+        fluidAudioDirectory.appendingPathComponent("model-integrity-manifest-v1.json")
+    }
 }

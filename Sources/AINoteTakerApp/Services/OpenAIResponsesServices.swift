@@ -12,11 +12,7 @@ struct OpenAIResponsesClient {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.config_incomplete"))
         }
 
-        let trimmed = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "https",
-              components.host?.isEmpty == false else {
+        guard OpenAIEndpointPolicy.validateHTTPSBaseURL(config.baseURL) else {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.base_url_invalid"))
         }
     }
@@ -66,8 +62,9 @@ struct OpenAIResponsesClient {
         case 429:
             throw AppError.networkFailure(reason: L10n.tr("error.openai.rate_limited"))
         default:
-            let serverText = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: L10n.tr("error.openai.http", http.statusCode, serverText))
+            throw AppError.networkFailure(
+                reason: L10n.tr("error.openai.http", http.statusCode, L10n.tr("error.safe.network_failure"))
+            )
         }
 
         return extractChatCompletionText(data: data)

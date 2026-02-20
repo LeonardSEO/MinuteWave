@@ -278,6 +278,29 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 step: .initializingDiarizer
             )
 
+            let integrityOutcomes = try ModelIntegrityVerifier().verifyOrBootstrap(
+                [
+                    ModelIntegrityVerifier.RepositoryInput(
+                        repositoryId: Repo.parakeet.remotePath,
+                        rootDirectory: asrCacheDirectory,
+                        expectedRelativePaths: expectedIntegrityPaths(from: asrManifest)
+                    ),
+                    ModelIntegrityVerifier.RepositoryInput(
+                        repositoryId: Repo.diarizer.remotePath,
+                        rootDirectory: diarizerCacheDirectory,
+                        expectedRelativePaths: expectedIntegrityPaths(from: diarizerManifest)
+                    ),
+                ]
+            )
+            if integrityOutcomes.values.contains(.bootstrapped) {
+                let warningMessage =
+                    "Model integrity baseline initialized; subsequent local model tampering will be blocked."
+                AppLogger.security.warning("\(warningMessage, privacy: .public)")
+                emitRuntimeEvent(.warning(message: warningMessage))
+            } else {
+                AppLogger.security.info("Local model integrity verification succeeded.")
+            }
+
             queue.sync {
                 asrManager = localAsrManager
                 offlineDiarizerManager = localDiarizer
@@ -610,6 +633,12 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         } catch {
             return nil
         }
+    }
+
+    private func expectedIntegrityPaths(from manifest: RepoManifest?) -> [String]? {
+        guard let manifest else { return nil }
+        let expectedPaths = Array(Set(manifest.entries.map(\.relativePath))).sorted()
+        return expectedPaths.isEmpty ? nil : expectedPaths
     }
 
     private func buildRepoManifest(

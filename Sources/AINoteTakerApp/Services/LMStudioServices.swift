@@ -104,8 +104,9 @@ struct LMStudioRuntimeClient {
         )
 
         guard (200...299).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: L10n.tr("error.lmstudio.models_http", http.statusCode, body))
+            throw AppError.networkFailure(
+                reason: L10n.tr("error.lmstudio.models_http", http.statusCode, L10n.tr("error.safe.network_failure"))
+            )
         }
 
         return try Self.parseLoadedModels(from: data)
@@ -282,8 +283,9 @@ struct LMStudioOpenAICompatClient {
         case 429:
             throw AppError.networkFailure(reason: L10n.tr("error.lmstudio.rate_limited"))
         default:
-            let serverText = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: L10n.tr("error.lmstudio.http", http.statusCode, serverText))
+            throw AppError.networkFailure(
+                reason: L10n.tr("error.lmstudio.http", http.statusCode, L10n.tr("error.safe.network_failure"))
+            )
         }
     }
 

@@ -226,8 +226,9 @@ final class AzureTranscriptionProvider: TranscriptionProvider, @unchecked Sendab
         case 429:
             throw AppError.networkFailure(reason: "Azure rate limit reached (429).")
         default:
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: "Azure transcription error \(http.statusCode): \(text)")
+            throw AppError.networkFailure(
+                reason: "Azure transcription error \(http.statusCode): \(L10n.tr("error.safe.network_failure"))"
+            )
         }
 
         let decoder = JSONDecoder()

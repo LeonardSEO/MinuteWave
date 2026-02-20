@@ -16,6 +16,4 @@ fi
 echo "Resetting TCC permissions for: $BUNDLE_ID"
 tccutil reset Microphone "$BUNDLE_ID"
 tccutil reset ScreenCapture "$BUNDLE_ID"
-defaults delete "$BUNDLE_ID" "permissions.screenCapture.requested" >/dev/null 2>&1 || true
-defaults delete "$BUNDLE_ID" "permissions.screenCapture.confirmed" >/dev/null 2>&1 || true
 echo "Done."

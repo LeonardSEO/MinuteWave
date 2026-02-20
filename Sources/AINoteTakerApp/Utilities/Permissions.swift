@@ -11,8 +11,13 @@ enum PermissionState: String {
 }
 
 enum Permissions {
-    private static let screenCaptureRequestedKey = "permissions.screenCapture.requested"
-    private static let screenCaptureLegacyConfirmedKey = "permissions.screenCapture.confirmed"
+    private static let screenCapturePermissionErrorMarkers: [String] = [
+        "permission",
+        "not authorized",
+        "not permitted",
+        "denied",
+        "declined"
+    ]
 
     static func microphoneState() -> PermissionState {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -42,32 +47,39 @@ enum Permissions {
         }
     }
 
-    static func resolveScreenCaptureState(
-        preflightGranted: Bool,
-        requestedBefore: Bool
-    ) -> PermissionState {
+    static func quickScreenCaptureState(preflightGranted: Bool) -> PermissionState {
         if preflightGranted {
             return .granted
         }
-        return requestedBefore ? .denied : .notDetermined
+        return .notDetermined
+    }
+
+    static func classifyScreenCaptureProbeFailure(_ error: Error) -> PermissionState {
+        let nsError = error as NSError
+        let diagnostics = [
+            nsError.domain,
+            nsError.localizedDescription,
+            String(describing: error)
+        ].joined(separator: " ").lowercased()
+
+        if screenCapturePermissionErrorMarkers.contains(where: { diagnostics.contains($0) }) {
+            return .denied
+        }
+
+        return .notDetermined
     }
 
     static func screenCaptureState() -> PermissionState {
-        let preflightGranted = CGPreflightScreenCaptureAccess()
-        let requested = UserDefaults.standard.bool(forKey: screenCaptureRequestedKey)
-        return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requested)
+        quickScreenCaptureState(preflightGranted: CGPreflightScreenCaptureAccess())
     }
 
     @MainActor
     static func refreshScreenCaptureState() async -> PermissionState {
-        let preflightGranted = CGPreflightScreenCaptureAccess()
-        if preflightGranted {
-            return .granted
-        }
-        let requestedBefore = UserDefaults.standard.bool(forKey: screenCaptureRequestedKey)
+        let quick = quickScreenCaptureState(preflightGranted: CGPreflightScreenCaptureAccess())
+        if quick == .granted { return .granted }
 
         guard #available(macOS 13.0, *) else {
-            return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requestedBefore)
+            return quick
         }
 
         do {
@@ -75,19 +87,16 @@ enum Permissions {
             if !content.displays.isEmpty {
                 return .granted
             }
+            return .notDetermined
         } catch {
-            // Keep fallback state from quick check.
+            return classifyScreenCaptureProbeFailure(error)
         }
-
-        return resolveScreenCaptureState(preflightGranted: preflightGranted, requestedBefore: requestedBefore)
     }
 
     static func requestScreenCapture() -> Bool {
         if CGPreflightScreenCaptureAccess() {
             return true
         }
-        UserDefaults.standard.set(true, forKey: screenCaptureRequestedKey)
-        UserDefaults.standard.removeObject(forKey: screenCaptureLegacyConfirmedKey)
         return CGRequestScreenCaptureAccess()
     }
 

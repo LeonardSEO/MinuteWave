@@ -23,6 +23,9 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
         guard let openAI = config.openAIConfig, openAI.isConfigured else {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.config_incomplete"))
         }
+        guard OpenAIEndpointPolicy.validateHTTPSBaseURL(openAI.baseURL) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.base_url_invalid"))
+        }
 
         queue.sync {
             self.config = config
@@ -174,6 +177,9 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
         guard let apiKey = try keychain.get(openAI.apiKeyRef), !apiKey.isEmpty else {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.api_key_missing", openAI.apiKeyRef))
         }
+        guard OpenAIEndpointPolicy.validateHTTPSBaseURL(openAI.baseURL) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.base_url_invalid"))
+        }
 
         guard let url = transcriptionURL(baseURL: openAI.baseURL) else {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.openai.transcription_url_invalid"))
@@ -218,8 +224,9 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
         case 429:
             throw AppError.networkFailure(reason: L10n.tr("error.openai.rate_limited"))
         default:
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.networkFailure(reason: L10n.tr("error.openai.http", http.statusCode, text))
+            throw AppError.networkFailure(
+                reason: L10n.tr("error.openai.http", http.statusCode, L10n.tr("error.safe.network_failure"))
+            )
         }
 
         let decoder = JSONDecoder()

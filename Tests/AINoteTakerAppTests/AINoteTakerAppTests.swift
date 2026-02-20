@@ -20,13 +20,81 @@ private final class AttemptCounter: @unchecked Sendable {
     }
 }
 
+private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    private static var requestHandler: ((URLRequest) -> (HTTPURLResponse, Data))?
+
+    static func setHandler(_ handler: ((URLRequest) -> (HTTPURLResponse, Data))?) {
+        lock.lock()
+        defer { lock.unlock() }
+        requestHandler = handler
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.lock.lock()
+        let handler = Self.requestHandler
+        Self.lock.unlock()
+
+        let result: (HTTPURLResponse, Data)
+        if let handler {
+            result = handler(request)
+        } else {
+            let fallbackURL = request.url ?? URL(string: "https://example.invalid")!
+            let response = HTTPURLResponse(url: fallbackURL, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            result = (response, Data())
+        }
+
+        client?.urlProtocol(self, didReceive: result.0, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: result.1)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 private let migrationTestKeyHex = String(repeating: "ab", count: 48)
+
+private func makeStubbedSession() -> URLSession {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [StubURLProtocol.self]
+    return URLSession(configuration: configuration)
+}
 
 private func cleanupDatabaseFiles(at databaseURL: URL) {
     let fm = FileManager.default
     try? fm.removeItem(at: databaseURL)
     try? fm.removeItem(at: URL(fileURLWithPath: databaseURL.path + "-wal"))
     try? fm.removeItem(at: URL(fileURLWithPath: databaseURL.path + "-shm"))
+}
+
+private func makeOpenAITranscriptionConfig(baseURL: String) -> TranscriptionConfig {
+    TranscriptionConfig(
+        providerType: .openAI,
+        languageMode: .auto(preferred: ["en"]),
+        realtimeEnabled: false,
+        audioCaptureMode: .microphoneOnly,
+        localRealtimeEndpoint: "ws://127.0.0.1:8000/v1/realtime",
+        transcriptionDelayMs: 480,
+        localRuntimeLaunchCommand: nil,
+        localRuntimeWorkingDirectory: nil,
+        azureConfig: nil,
+        openAIConfig: OpenAIConfig(
+            baseURL: baseURL,
+            apiKeyRef: "openai-api-key",
+            chatModel: OpenAIModelPolicy.chatModel,
+            summaryModel: OpenAIModelPolicy.summaryModel,
+            transcriptionModel: OpenAIModelPolicy.transcriptionModel
+        ),
+        localModelRef: nil
+    )
 }
 
 private func seedMigrationFixture(
@@ -135,6 +203,181 @@ func semanticVersionComparisonHandlesComponentLengths() {
     #expect(v010 > v019)
     #expect(v12 == v120)
     #expect(v12 < v121)
+}
+
+@Test("OpenAI endpoint policy only allows HTTPS URLs with host")
+func openAIEndpointPolicyRequiresHTTPS() {
+    #expect(OpenAIEndpointPolicy.validateHTTPSBaseURL("https://api.openai.com/v1") == true)
+    #expect(OpenAIEndpointPolicy.validateHTTPSBaseURL("http://api.openai.com/v1") == false)
+    #expect(OpenAIEndpointPolicy.validateHTTPSBaseURL("https:///v1") == false)
+}
+
+@Test("OpenAI client validation rejects non-HTTPS base URL")
+func openAIResponsesClientValidationRejectsHTTP() {
+    let client = OpenAIResponsesClient()
+    let config = OpenAIConfig(
+        baseURL: "http://api.openai.com/v1",
+        apiKeyRef: "openai-api-key",
+        chatModel: OpenAIModelPolicy.chatModel,
+        summaryModel: OpenAIModelPolicy.summaryModel,
+        transcriptionModel: OpenAIModelPolicy.transcriptionModel
+    )
+
+    var rejected = false
+    do {
+        try client.validateConfig(config)
+    } catch let error as AppError {
+        if case .invalidConfiguration = error {
+            rejected = true
+        }
+    } catch {}
+    #expect(rejected == true)
+}
+
+@Test("OpenAI transcription start rejects non-HTTPS configuration")
+func openAITranscriptionStartRejectsHTTPBaseURL() async {
+    let provider = OpenAITranscriptionProvider()
+    let config = makeOpenAITranscriptionConfig(baseURL: "http://api.openai.com/v1")
+
+    var rejected = false
+    do {
+        try await provider.startSession(config: config, sessionId: UUID())
+    } catch let error as AppError {
+        if case .invalidConfiguration = error {
+            rejected = true
+        }
+    } catch {}
+    #expect(rejected == true)
+}
+
+@Test("Trusted release URL policy only allows GitHub releases path for owner/repo")
+func trustedReleaseURLPolicyRestrictsHostAndPath() throws {
+    let trusted = try #require(URL(string: "https://github.com/LeonardSEO/MinuteWave/releases/tag/v1.2.3"))
+    let wrongHost = try #require(URL(string: "https://example.com/LeonardSEO/MinuteWave/releases/tag/v1.2.3"))
+    let wrongPath = try #require(URL(string: "https://github.com/LeonardSEO/MinuteWave/pulls/10"))
+    let wrongRepo = try #require(URL(string: "https://github.com/LeonardSEO/OtherRepo/releases"))
+    let insecure = try #require(URL(string: "http://github.com/LeonardSEO/MinuteWave/releases"))
+
+    #expect(TrustedReleaseURLPolicy.isTrustedReleaseURL(trusted, owner: "LeonardSEO", repository: "MinuteWave") == true)
+    #expect(TrustedReleaseURLPolicy.isTrustedReleaseURL(wrongHost, owner: "LeonardSEO", repository: "MinuteWave") == false)
+    #expect(TrustedReleaseURLPolicy.isTrustedReleaseURL(wrongPath, owner: "LeonardSEO", repository: "MinuteWave") == false)
+    #expect(TrustedReleaseURLPolicy.isTrustedReleaseURL(wrongRepo, owner: "LeonardSEO", repository: "MinuteWave") == false)
+    #expect(TrustedReleaseURLPolicy.isTrustedReleaseURL(insecure, owner: "LeonardSEO", repository: "MinuteWave") == false)
+}
+
+@Test("GitHub update service falls back when API payload release URL is untrusted")
+@MainActor
+func gitHubUpdateServiceFallsBackForUntrustedPayloadURL() async {
+    let payload = """
+    {
+      "tag_name": "v9.9.9",
+      "html_url": "https://malicious.example/release",
+      "draft": false,
+      "prerelease": false
+    }
+    """
+    StubURLProtocol.setHandler { request in
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://api.github.com")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return (response, Data(payload.utf8))
+    }
+    defer { StubURLProtocol.setHandler(nil) }
+
+    let service = GitHubUpdateService(
+        owner: "LeonardSEO",
+        repository: "MinuteWave",
+        session: makeStubbedSession()
+    )
+    await service.checkForUpdates(userInitiated: false)
+
+    #expect(service.latestReleaseURL == service.fallbackReleasesPageURL)
+}
+
+@Test("Model registry policy accepts trusted host and rejects untrusted overrides")
+func modelRegistryPolicyResolveTrustedBaseURL() {
+    let trusted = ModelRegistryPolicy.resolveTrustedBaseURL(candidate: "https://huggingface.co")
+    #expect(trusted.baseURL == ModelRegistryPolicy.trustedDefaultBaseURL)
+    #expect(trusted.warning == nil)
+
+    let withPath = ModelRegistryPolicy.resolveTrustedBaseURL(candidate: "https://huggingface.co/path")
+    #expect(withPath.baseURL == ModelRegistryPolicy.trustedDefaultBaseURL)
+    #expect(withPath.warning != nil)
+
+    let insecure = ModelRegistryPolicy.resolveTrustedBaseURL(candidate: "http://huggingface.co")
+    #expect(insecure.baseURL == ModelRegistryPolicy.trustedDefaultBaseURL)
+    #expect(insecure.warning != nil)
+
+    let wrongHost = ModelRegistryPolicy.resolveTrustedBaseURL(candidate: "https://example.com")
+    #expect(wrongHost.baseURL == ModelRegistryPolicy.trustedDefaultBaseURL)
+    #expect(wrongHost.warning != nil)
+}
+
+@Test("Model integrity verifier bootstraps baseline and verifies unchanged files")
+func modelIntegrityVerifierBootstrapsAndVerifies() throws {
+    let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("ai-note-taker-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let repoDir = tempDir.appendingPathComponent("models", isDirectory: true)
+    try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
+    let modelFile = repoDir.appendingPathComponent("model.bin")
+    try Data("v1".utf8).write(to: modelFile)
+
+    let verifier = ModelIntegrityVerifier(
+        manifestURL: tempDir.appendingPathComponent("model-integrity-manifest.json")
+    )
+    let repository = ModelIntegrityVerifier.RepositoryInput(
+        repositoryId: "test/repo",
+        rootDirectory: repoDir,
+        expectedRelativePaths: ["model.bin"]
+    )
+
+    let firstResult = try verifier.verifyOrBootstrap([repository])
+    #expect(firstResult["test/repo"] == .bootstrapped)
+
+    let secondResult = try verifier.verifyOrBootstrap([repository])
+    #expect(secondResult["test/repo"] == .verified)
+}
+
+@Test("Model integrity verifier blocks mismatched model files after baseline")
+func modelIntegrityVerifierDetectsMismatch() throws {
+    let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("ai-note-taker-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let repoDir = tempDir.appendingPathComponent("models", isDirectory: true)
+    try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
+    let modelFile = repoDir.appendingPathComponent("model.bin")
+    try Data("v1".utf8).write(to: modelFile)
+
+    let verifier = ModelIntegrityVerifier(
+        manifestURL: tempDir.appendingPathComponent("model-integrity-manifest.json")
+    )
+    let repository = ModelIntegrityVerifier.RepositoryInput(
+        repositoryId: "test/repo",
+        rootDirectory: repoDir,
+        expectedRelativePaths: ["model.bin"]
+    )
+    _ = try verifier.verifyOrBootstrap([repository])
+
+    try Data("tampered".utf8).write(to: modelFile, options: .atomic)
+
+    var mismatchDetected = false
+    do {
+        _ = try verifier.verifyOrBootstrap([repository])
+    } catch let error as AppError {
+        if case .providerUnavailable(let reason) = error {
+            mismatchDetected = reason.localizedCaseInsensitiveContains("integrity mismatch")
+        }
+    } catch {}
+
+    #expect(mismatchDetected == true)
 }
 
 @Test("Session lifecycle")
@@ -297,6 +540,14 @@ func databaseEncryptionStateStoreRoundTrip() throws {
     #expect(store.load(defaultValue: false) == true)
     try store.save(encryptionEnabled: false)
     #expect(store.load(defaultValue: true) == false)
+}
+
+@Test("AppSettings default enables encryption and legacy missing field decodes to true")
+func appSettingsEncryptionDefaultsToEnabled() throws {
+    #expect(AppSettings.default.encryptionEnabled == true)
+
+    let decoded = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+    #expect(decoded.encryptionEnabled == true)
 }
 
 @Test("SQLCipher runtime is available when linked")
@@ -570,12 +821,27 @@ func waveformSmoothingDeterministic() {
     #expect(abs(falling - 0.74) < 0.0001)
 }
 
-@Test("Screen capture permission state resolver is deterministic")
-func screenCapturePermissionStateResolver() {
-    #expect(Permissions.resolveScreenCaptureState(preflightGranted: true, requestedBefore: false) == .granted)
-    #expect(Permissions.resolveScreenCaptureState(preflightGranted: true, requestedBefore: true) == .granted)
-    #expect(Permissions.resolveScreenCaptureState(preflightGranted: false, requestedBefore: false) == .notDetermined)
-    #expect(Permissions.resolveScreenCaptureState(preflightGranted: false, requestedBefore: true) == .denied)
+@Test("Screen capture quick state uses preflight only")
+func screenCaptureQuickState() {
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: true) == .granted)
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: false) == .notDetermined)
+}
+
+@Test("Screen capture probe failure classification detects denied vs unknown")
+func screenCaptureProbeFailureClassification() {
+    let deniedError = NSError(
+        domain: "SCStreamErrorDomain",
+        code: -1,
+        userInfo: [NSLocalizedDescriptionKey: "User denied screen capture permission."]
+    )
+    #expect(Permissions.classifyScreenCaptureProbeFailure(deniedError) == .denied)
+
+    let unknownError = NSError(
+        domain: "NSCocoaErrorDomain",
+        code: 4,
+        userInfo: [NSLocalizedDescriptionKey: "A generic stream setup failure occurred."]
+    )
+    #expect(Permissions.classifyScreenCaptureProbeFailure(unknownError) == .notDetermined)
 }
 
 @Test("Audio capture mode changes are blocked while recording-like statuses are active")

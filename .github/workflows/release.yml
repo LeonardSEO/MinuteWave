@@ -32,21 +32,20 @@ jobs:
           brew update
           brew install create-dmg sqlcipher
 
-      - name: Detect signing secrets
-        id: signing
+      - name: Validate signing secrets
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
           APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
           if [[ -n "${APPLE_DEV_CERT_P12_BASE64:-}" && -n "${APPLE_DEV_CERT_PASSWORD:-}" && -n "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Signing secrets detected."
           else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Missing required signing secrets. Set APPLE_DEV_CERT_P12_BASE64, APPLE_DEV_CERT_PASSWORD, and APPLE_DEV_SIGNING_IDENTITY." >&2
+            exit 1
           fi
 
-      - name: Import Apple Development certificate (optional)
-        if: ${{ steps.signing.outputs.enabled == 'true' }}
+      - name: Import Apple Development certificate
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
@@ -71,13 +70,8 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
-          if [[ "${{ steps.signing.outputs.enabled }}" == "true" && -n "${SIGNING_IDENTITY:-}" ]]; then
-            echo "Building DMG with Apple Development signature: $SIGNING_IDENTITY"
-            SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_dmg.sh release
-          else
-            echo "No signing secrets found. Building ad-hoc DMG."
-            ./scripts/build_dmg.sh release
-          fi
+          echo "Building DMG with Apple Development signature: $SIGNING_IDENTITY"
+          SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_dmg.sh release
 
       - name: Verify app signature
         run: |
@@ -99,5 +93,5 @@ jobs:
             ## MinuteWave release
 
             - macOS DMG build
-            - Uses Apple Development signing when signing secrets are configured
+            - Uses Apple Development signing (required in CI)
             - If Gatekeeper blocks launch, right-click the app and choose **Open**

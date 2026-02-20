@@ -28,11 +28,15 @@ struct RootView: View {
                 viewModel.transientError = nil
             }
         } message: { error in
+            #if DEBUG
             if let detail = error.technicalDetail, !detail.isEmpty {
                 Text("\(error.userMessage)\n\n\(L10n.tr("ui.error.technical_detail_prefix")) \(detail)")
             } else {
                 Text(error.userMessage)
             }
+            #else
+            Text(error.userMessage)
+            #endif
         }
     }
 }

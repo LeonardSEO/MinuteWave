@@ -165,7 +165,8 @@ final class GitHubUpdateService: ObservableObject {
     }
 
     func openLatestReleasePage() {
-        NSWorkspace.shared.open(latestReleaseURL ?? fallbackReleasesPageURL)
+        let target = latestReleaseURL.map(sanitizedReleaseURLOrFallback) ?? fallbackReleasesPageURL
+        NSWorkspace.shared.open(target)
     }
 
     private func fetchLatestReleaseInfo() async throws -> LatestReleaseInfo {
@@ -197,7 +198,7 @@ final class GitHubUpdateService: ObservableObject {
         return LatestReleaseInfo(
             version: version,
             versionLabel: version.description,
-            releaseURL: payload.htmlURL
+            releaseURL: sanitizedReleaseURLOrFallback(payload.htmlURL)
         )
     }
 
@@ -214,7 +215,7 @@ final class GitHubUpdateService: ObservableObject {
         alert.addButton(withTitle: L10n.tr("ui.updates.alert.available.later"))
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(releaseURL)
+            NSWorkspace.shared.open(sanitizedReleaseURLOrFallback(releaseURL))
         }
     }
 
@@ -260,5 +261,16 @@ final class GitHubUpdateService: ObservableObject {
             return L10n.tr("ui.updates.error.network", urlError.localizedDescription)
         }
         return L10n.tr("ui.updates.error.generic")
+    }
+
+    private func sanitizedReleaseURLOrFallback(_ candidate: URL) -> URL {
+        if TrustedReleaseURLPolicy.isTrustedReleaseURL(candidate, owner: owner, repository: repository) {
+            return candidate
+        }
+
+        AppLogger.security.error(
+            "Rejected untrusted release URL for update flow; using fallback releases page."
+        )
+        return fallbackReleasesPageURL
     }
 }

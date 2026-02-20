@@ -611,7 +611,7 @@ struct AppSettings: Codable, Equatable {
         lmStudioConfig: .default,
         summaryPrompt: .defaultPrompt,
         autoSummarizeAfterStop: true,
-        encryptionEnabled: false,
+        encryptionEnabled: true,
         transcriptDefaultCollapsed: false
     )
 
@@ -655,7 +655,7 @@ struct AppSettings: Codable, Equatable {
         lmStudioConfig = try container.decodeIfPresent(LMStudioConfig.self, forKey: .lmStudioConfig) ?? .default
         summaryPrompt = try container.decodeIfPresent(SummaryPrompt.self, forKey: .summaryPrompt) ?? .defaultPrompt
         autoSummarizeAfterStop = try container.decodeIfPresent(Bool.self, forKey: .autoSummarizeAfterStop) ?? true
-        encryptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .encryptionEnabled) ?? false
+        encryptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .encryptionEnabled) ?? true
         transcriptDefaultCollapsed = try container.decodeIfPresent(Bool.self, forKey: .transcriptDefaultCollapsed) ?? false
     }
 }
