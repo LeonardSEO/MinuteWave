@@ -32,20 +32,24 @@ jobs:
           brew update
           brew install create-dmg sqlcipher
 
-      - name: Validate signing secrets
+      - name: Resolve signing mode
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
           APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
           if [[ -n "${APPLE_DEV_CERT_P12_BASE64:-}" && -n "${APPLE_DEV_CERT_PASSWORD:-}" && -n "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
-            echo "Signing secrets detected."
+            echo "HAS_SIGNING_SECRETS=true" >> "$GITHUB_ENV"
+            echo "SIGNING_IDENTITY=${APPLE_DEV_SIGNING_IDENTITY}" >> "$GITHUB_ENV"
+            echo "Signing with Apple Development identity from secrets."
           else
-            echo "Missing required signing secrets. Set APPLE_DEV_CERT_P12_BASE64, APPLE_DEV_CERT_PASSWORD, and APPLE_DEV_SIGNING_IDENTITY." >&2
-            exit 1
+            echo "HAS_SIGNING_SECRETS=false" >> "$GITHUB_ENV"
+            echo "SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "Signing secrets not configured; falling back to ad-hoc signing."
           fi
 
       - name: Import Apple Development certificate
+        if: env.HAS_SIGNING_SECRETS == 'true'
         env:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
@@ -67,15 +71,18 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Build DMG
-        env:
-          SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
         run: |
-          echo "Building DMG with Apple Development signature: $SIGNING_IDENTITY"
+          echo "Building DMG with signing identity: ${SIGNING_IDENTITY}"
           SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_dmg.sh release
 
       - name: Verify app signature
         run: |
-          codesign -dv --verbose=4 .build/AppBundle/MinuteWave.app 2>&1 | grep -E "Authority=|TeamIdentifier=|Signature"
+          if [[ "${HAS_SIGNING_SECRETS}" == "true" ]]; then
+            codesign -dv --verbose=4 .build/AppBundle/MinuteWave.app 2>&1 | grep -E "Authority=|TeamIdentifier=|Signature="
+          else
+            codesign -dv --verbose=4 .build/AppBundle/MinuteWave.app 2>&1 | grep -E "Signature="
+          fi
+          codesign --verify --deep --strict .build/AppBundle/MinuteWave.app
 
       - name: Generate SHA256
         run: |
@@ -93,5 +100,5 @@ jobs:
             ## MinuteWave release
 
             - macOS DMG build
-            - Uses Apple Development signing (required in CI)
+            - Uses Apple Development signing when secrets are configured; otherwise falls back to ad-hoc signing
             - If Gatekeeper blocks launch, right-click the app and choose **Open**
