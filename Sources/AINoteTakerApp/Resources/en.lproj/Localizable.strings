@@ -291,7 +291,6 @@
 "ui.onboarding.requirements_not_met" = "This app requires Apple Silicon and at least 16GB RAM.";
 "ui.onboarding.screen_recording" = "Screen recording";
 "ui.onboarding.screen_recording.active" = "Active";
-"ui.onboarding.screen_optional_fallback" = "Screen recording is required for system audio. You can continue now; recording will fall back to microphone-only until permission becomes active.";
 "ui.onboarding.start_app" = "Start app";
 "ui.onboarding.step_of_total" = "Step %d of %d";
 "ui.onboarding.system_permissions" = "System & permissions";

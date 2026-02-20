@@ -132,6 +132,10 @@ fi
 
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 
+BUNDLE_ID="$(
+  /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
+)"
+
 CODESIGN_ARGS=(--force --deep --sign "$SIGNING_IDENTITY")
 if [[ "$ENABLE_HARDENED_RUNTIME" == "1" ]]; then
   CODESIGN_ARGS+=(--options runtime)
@@ -139,11 +143,13 @@ fi
 if [[ -n "$ENTITLEMENTS_PATH" && -f "$ENTITLEMENTS_PATH" ]]; then
   CODESIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PATH")
 fi
+if [[ "$SIGNING_IDENTITY" == "-" && -n "$BUNDLE_ID" ]]; then
+  # Keep TCC permission identity stable for ad-hoc builds across updates by
+  # avoiding the default cdhash-only designated requirement.
+  ADHOC_REQUIREMENT="=designated => identifier \"$BUNDLE_ID\""
+  CODESIGN_ARGS+=(--requirements "$ADHOC_REQUIREMENT")
+fi
 codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE_PATH"
-
-BUNDLE_ID="$(
-  /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
-)"
 
 echo ""
 echo "Done."

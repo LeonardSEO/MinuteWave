@@ -244,7 +244,6 @@
 "ui.onboarding.requirements_not_met" = "Deze app vereist Apple Silicon en minimaal 16GB RAM.";
 "ui.onboarding.screen_recording" = "Schermopname";
 "ui.onboarding.screen_recording.active" = "Actief";
-"ui.onboarding.screen_optional_fallback" = "Schermopname is nodig voor systeemaudio. Je kunt nu doorgaan; opname valt terug naar alleen microfoon totdat de permissie actief is.";
 "ui.onboarding.start_app" = "Start app";
 "ui.onboarding.step_of_total" = "Stap %d van %d";
 "ui.onboarding.system_permissions" = "Systeem & permissies";

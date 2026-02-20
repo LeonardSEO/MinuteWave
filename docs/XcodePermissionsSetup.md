@@ -65,5 +65,11 @@ Belangrijk:
 ## 6) Veelvoorkomende valkuilen
 
 1. Bundle ID wisselt per build -> permissies lijken "weg"
-2. App draait niet als echte `.app` -> TCC koppelt aan hostproces
-3. Tweede stop tijdens finalisatie -> foutmelding (is in code inmiddels idempotent gemaakt)
+2. Instabiele code-signing identity -> TCC ziet een nieuwe app-identiteit na update
+3. App draait niet als echte `.app` -> TCC koppelt aan hostproces
+4. Tweede stop tijdens finalisatie -> foutmelding (is in code inmiddels idempotent gemaakt)
+
+Opmerking signing:
+
+- `scripts/build_dev_app_bundle.sh` gebruikt voor ad-hoc builds een stabiele designated requirement op basis van `CFBundleIdentifier`, zodat permissies beter mee kunnen gaan tussen lokale updates.
+- Voor distributie/release blijft een echte signing identity (Apple Development / Developer ID) aanbevolen.
