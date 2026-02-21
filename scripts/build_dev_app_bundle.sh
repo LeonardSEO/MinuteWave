@@ -113,6 +113,16 @@ embed_sqlcipher_runtime() {
 
 embed_sqlcipher_runtime
 
+sign_embedded_code() {
+  if [[ ! -d "$FRAMEWORKS_DIR" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' dylib_path; do
+    codesign --force --sign "$SIGNING_IDENTITY" "$dylib_path"
+  done < <(find "$FRAMEWORKS_DIR" -type f -name "*.dylib" -print0 | sort -z)
+}
+
 if [[ -f "$ICON_SOURCE_PATH" ]]; then
   rm -rf "$ICONSET_DIR"
   mkdir -p "$ICONSET_DIR"
@@ -136,7 +146,7 @@ BUNDLE_ID="$(
   /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
 )"
 
-CODESIGN_ARGS=(--force --deep --sign "$SIGNING_IDENTITY")
+CODESIGN_ARGS=(--force --sign "$SIGNING_IDENTITY")
 if [[ "$ENABLE_HARDENED_RUNTIME" == "1" ]]; then
   CODESIGN_ARGS+=(--options runtime)
 fi
@@ -149,6 +159,8 @@ if [[ "$SIGNING_IDENTITY" == "-" && -n "$BUNDLE_ID" ]]; then
   ADHOC_REQUIREMENT="=designated => identifier \"$BUNDLE_ID\""
   CODESIGN_ARGS+=(--requirements "$ADHOC_REQUIREMENT")
 fi
+
+sign_embedded_code
 codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE_PATH"
 
 echo ""
