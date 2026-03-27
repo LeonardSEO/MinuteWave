@@ -221,6 +221,7 @@
 "ui.onboarding.ai_optional" = "AI (optioneel)";
 "ui.onboarding.allow_mic_and_screen" = "Sta microfoon en schermopname toe voordat je verdergaat.";
 "ui.onboarding.allow_mic_only" = "Sta microfoon toe voordat je verdergaat.";
+"ui.onboarding.screen_recording_optional" = "Je kunt onboarding afronden zonder schermopname. Totdat die permissie actief is, neemt MinuteWave alleen de microfoon op.";
 "ui.onboarding.apple_silicon" = "Apple Silicon";
 "ui.onboarding.azure.configure_hint" = "Configureer Azure OpenAI voor samenvatten en chat met transcript.";
 "ui.onboarding.azure.endpoint" = "Azure-eindpunt";
@@ -253,6 +254,7 @@
 "ui.permission.denied" = "Geweigerd";
 "ui.permission.granted" = "Toegestaan";
 "ui.permission.not_requested" = "Niet aangevraagd";
+"ui.permissions.screen_recording_guidance" = "Systeemaudio is niet beschikbaar omdat schermopname niet actief is. Controleer macOS Instellingen > Privacy en beveiliging > Scherm- en systeemaudio-opname. Herstart MinuteWave daarna eenmalig of kies Alleen microfoon.";
 
 "ui.settings.api_key" = "API-key";
 "ui.settings.api_key_optional" = "API-key (optioneel)";
