@@ -11,7 +11,8 @@ let package = Package(
         .executable(name: "MinuteWave", targets: ["AINoteTakerApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.1")
+        // Vendored until the upstream strict-concurrency fix is available in a tagged release.
+        .package(path: "Vendor/FluidAudio")
     ],
     targets: [
         .executableTarget(
@@ -20,6 +21,10 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio")
             ],
             path: "Sources/AINoteTakerApp",
+            exclude: [
+                "AGENTS.md",
+                "CLAUDE.md"
+            ],
             resources: [
                 .process("Resources")
             ],
@@ -52,7 +57,11 @@ let package = Package(
         .testTarget(
             name: "AINoteTakerAppTests",
             dependencies: ["AINoteTakerApp"],
-            path: "Tests/AINoteTakerAppTests"
+            path: "Tests/AINoteTakerAppTests",
+            exclude: [
+                "AGENTS.md",
+                "CLAUDE.md"
+            ]
         )
     ],
     swiftLanguageModes: [.v5]

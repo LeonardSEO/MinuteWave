@@ -82,6 +82,8 @@ final class AppViewModel: ObservableObject {
     private let localProvider: LocalFluidAudioProvider
     private let azureProvider: AzureTranscriptionProvider
     private let openAIProvider: OpenAITranscriptionProvider
+    private let recordingWorkflow: RecordingWorkflowService
+    private let assistantService: SessionAssistantService
 
     private var exportService: ExportService { ExportService(repository: repository) }
 
@@ -153,6 +155,14 @@ final class AppViewModel: ObservableObject {
         self.localProvider = localProvider
         self.azureProvider = azureProvider
         self.openAIProvider = openAIProvider
+        self.recordingWorkflow = RecordingWorkflowService(
+            repository: repository,
+            audioEngine: audioEngine,
+            localProvider: localProvider,
+            azureProvider: azureProvider,
+            openAIProvider: openAIProvider
+        )
+        self.assistantService = SessionAssistantService(repository: repository)
         self.localProvider.onRuntimeEvent = { [weak self] event in
             Task { @MainActor in
                 self?.handleLocalRuntimeEvent(event)
@@ -194,7 +204,7 @@ final class AppViewModel: ObservableObject {
             if let modelRef = settings.transcriptionConfig.localModelRef {
                 modelInstallState = try await repository.loadModelInstallState(modelId: modelRef.modelId)
             }
-            refreshCaptureStatusFromAudioEngine()
+            await refreshCaptureStatus()
 
             applyTheme(nil)
 
@@ -232,19 +242,23 @@ final class AppViewModel: ObservableObject {
         lmStudioApiKey: String?
     ) async {
         do {
-            let micPermission = Permissions.microphoneState()
-            if micPermission != .granted {
+            let requirements = OnboardingRequirementSnapshot(
+                meetsMinimumRequirements: DeviceGuard.inspect().meetsMinimumRequirements,
+                microphonePermission: Permissions.microphoneState(),
+                screenCapturePermission: updatedSettings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem
+                    ? await Permissions.refreshScreenCaptureState()
+                    : .notDetermined,
+                selectedCaptureMode: updatedSettings.transcriptionConfig.audioCaptureMode
+            )
+
+            guard requirements.meetsMinimumRequirements else {
+                throw AppError.unsupportedHardware(reason: L10n.tr("ui.onboarding.requirements_not_met"))
+            }
+
+            if requirements.microphonePermission != .granted {
                 throw AppError.providerUnavailable(
                     reason: L10n.tr("ui.error.onboarding.microphone_required")
                 )
-            }
-            if updatedSettings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem {
-                let screenPermission = await Permissions.refreshScreenCaptureState()
-                if screenPermission != .granted {
-                    throw AppError.providerUnavailable(
-                        reason: L10n.tr("ui.error.onboarding.screen_recording_required")
-                    )
-                }
             }
 
             var merged = normalizeSettings(updatedSettings)
@@ -274,6 +288,7 @@ final class AppViewModel: ObservableObject {
             }
             localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.not_checked")
             isLocalTranscriptionHealthy = false
+            await refreshCaptureStatus()
             await refreshLMStudioRuntimeStatus()
         } catch {
             transientError = userFacingErrorMessage(error)
@@ -285,6 +300,32 @@ final class AppViewModel: ObservableObject {
             sessions = try await repository.listSessions(search: search)
             if selectedSessionId == nil {
                 selectedSessionId = sessions.first?.id
+            }
+        } catch {
+            transientError = userFacingErrorMessage(error)
+        }
+    }
+
+    func deleteSession(_ id: UUID) async {
+        let protectedStatuses: Set<SessionStatus> = [.recording, .paused, .finalizing]
+        let currentStatus = sessions.first(where: { $0.id == id })?.status ?? activeSessionStatus
+        guard protectedStatuses.contains(currentStatus) == false else {
+            transientError = presentationError(
+                userMessage: L10n.tr("startup.blocked.recording_not_ready")
+            )
+            return
+        }
+
+        do {
+            try await repository.deleteSession(sessionId: id)
+            sessions.removeAll(where: { $0.id == id })
+
+            if selectedSessionId == id {
+                if let nextSession = sessions.first {
+                    await selectSession(nextSession.id)
+                } else {
+                    prepareNewSessionDraft()
+                }
             }
         } catch {
             transientError = userFacingErrorMessage(error)
@@ -459,19 +500,17 @@ final class AppViewModel: ObservableObject {
         let sessionName = candidate.isEmpty
             ? L10n.tr("ui.main.session.default_name", Date().formatted(date: .abbreviated, time: .shortened))
             : candidate
-        var createdSessionId: UUID?
 
         do {
-            if settings.transcriptionConfig.providerType == .localVoxtral {
-                try await ensureLocalFluidAudioPreparedIfNeeded()
-            }
-
-            let session = try await repository.createSession(
+            let startedSession = try await recordingWorkflow.startSession(
                 name: sessionName,
-                provider: settings.transcriptionConfig.providerType
+                settings: settings,
+                prepareLocalProviderIfNeeded: { [weak self] in
+                    guard let self else { return }
+                    try await self.ensureLocalFluidAudioPreparedIfNeeded()
+                }
             )
-            createdSessionId = session.id
-            selectedSessionId = session.id
+            selectedSessionId = startedSession.session.id
             recordingSessionName = sessionName
             activeSessionStatus = .recording
             currentSegments = []
@@ -482,16 +521,10 @@ final class AppViewModel: ObservableObject {
             liveWaveformSamples = Array(repeating: 0.0, count: 48)
             waveformTargetLevel = 0
             waveformSmoothedLevel = 0
-            try await repository.updateSessionStatus(sessionId: session.id, status: .recording, endedAt: nil)
-
-            let provider = try pickTranscriptionProvider()
-            activeProvider = provider
+            activeProvider = startedSession.provider
             isLocalTranscriptionHealthy = false
             localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.connecting")
-            try await provider.startSession(config: settings.transcriptionConfig, sessionId: session.id)
-            audioEngine.configure(captureMode: settings.transcriptionConfig.audioCaptureMode)
-            try await audioEngine.start()
-            refreshCaptureStatusFromAudioEngine()
+            await refreshCaptureStatus()
 
             recordingTimerTask?.cancel()
             recordingTimerTask = Task { [weak self] in
@@ -508,6 +541,7 @@ final class AppViewModel: ObservableObject {
             audioPumpTask?.cancel()
             audioPumpTask = Task { [weak self] in
                 guard let self else { return }
+                guard let provider = self.activeProvider else { return }
                 for await chunk in self.audioEngine.audioStream() {
                     let level = Self.audioLevel(fromPCM16Data: chunk.data)
                     await MainActor.run {
@@ -520,6 +554,7 @@ final class AppViewModel: ObservableObject {
             partialPumpTask?.cancel()
             partialPumpTask = Task { [weak self] in
                 guard let self else { return }
+                guard let provider = self.activeProvider else { return }
                 for await segment in provider.partialSegmentsStream() {
                     await MainActor.run {
                         if !self.settings.transcriptionConfig.realtimeEnabled {
@@ -534,12 +569,11 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            try await repository.addAuditEvent(category: "session", message: "Recording started")
             await refreshSessions()
         } catch {
             activeProvider = nil
             await audioEngine.stop()
-            refreshCaptureStatusFromAudioEngine()
+            await refreshCaptureStatus()
             audioPumpTask?.cancel()
             partialPumpTask?.cancel()
             recordingTimerTask?.cancel()
@@ -553,9 +587,6 @@ final class AppViewModel: ObservableObject {
             isLocalTranscriptionHealthy = false
             localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
             activeSessionStatus = .failed
-            if let createdSessionId {
-                try? await repository.updateSessionStatus(sessionId: createdSessionId, status: .failed, endedAt: Date())
-            }
             await refreshSessions(search: "")
         }
     }
@@ -582,9 +613,9 @@ final class AppViewModel: ObservableObject {
         defer { isStoppingRecording = false }
 
         do {
-            let provider = activeProvider ?? providerForStop()
+            let provider = activeProvider ?? recordingWorkflow.fallbackProvider(for: settings)
             await audioEngine.stop()
-            refreshCaptureStatusFromAudioEngine()
+            await refreshCaptureStatus()
             audioPumpTask?.cancel()
             partialPumpTask?.cancel()
             recordingTimerTask?.cancel()
@@ -595,19 +626,10 @@ final class AppViewModel: ObservableObject {
             waveformTargetLevel = 0
             waveformSmoothedLevel = 0
 
-            let transcript = try await provider.stopSession()
-
-            for segment in transcript.segments {
-                try await repository.insertSegment(segment)
-            }
-            currentSegments = transcript.segments
-
-            let chunks = chunkTranscriptForRetrieval(transcript)
-            try await repository.upsertTranscriptChunks(sessionId: sessionId, chunks: chunks)
-            try await repository.updateSessionStatus(sessionId: sessionId, status: .completed, endedAt: Date())
+            let stoppedSession = try await recordingWorkflow.stopSession(sessionId: sessionId, provider: provider)
+            currentSegments = stoppedSession.transcript.segments
 
             activeSessionStatus = .completed
-            try await repository.addAuditEvent(category: "session", message: "Recording completed")
             activeProvider = nil
             recordingStartedAt = nil
             recordingElapsedLabel = "0:00"
@@ -640,42 +662,17 @@ final class AppViewModel: ObservableObject {
 
     func generateSummaryIfAvailable(showUnavailableError: Bool = true) async {
         guard let sessionId = selectedSessionId else { return }
-        let summaryProvider: (any SummarizationProvider)?
-        switch settings.cloudProvider {
-        case .azureOpenAI:
-            summaryProvider = settings.azureConfig.isChatConfigured
-                ? AzureSummarizationProvider(settingsProvider: { [repository] in
-                    try await repository.loadSettings()
-                })
-                : nil
-        case .openAI:
-            summaryProvider = settings.openAIConfig.isConfigured
-                ? OpenAISummarizationProvider(settingsProvider: { [repository] in
-                    try await repository.loadSettings()
-                })
-                : nil
-        case .lmStudio:
-            summaryProvider = settings.lmStudioConfig.isConfigured
-                ? LMStudioSummarizationProvider(settingsProvider: { [repository] in
-                    try await repository.loadSettings()
-                })
-                : nil
-        }
-        guard let summaryProvider else {
-            if showUnavailableError {
-                transientError = presentationError(userMessage: L10n.tr("error.summary.provider_not_configured"))
-            }
-            return
-        }
 
         isBusy = true
         defer { isBusy = false }
 
         do {
-            let transcript = Transcript(sessionId: sessionId, segments: try await repository.listSegments(sessionId: sessionId))
-            let summary = try await summaryProvider.summarize(transcript: transcript, prompt: settings.summaryPrompt)
-            try await repository.saveSummary(sessionId: sessionId, summary: summary)
-            currentSummary = try await repository.latestSummary(sessionId: sessionId)
+            currentSummary = try await assistantService.generateSummary(sessionId: sessionId, settings: settings)
+        } catch let appError as AppError {
+            if case .providerUnavailable = appError, showUnavailableError == false {
+                return
+            }
+            transientError = userFacingErrorMessage(appError)
         } catch {
             transientError = userFacingErrorMessage(error)
         }
@@ -693,53 +690,23 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        let userMessage = ChatMessage(
-            id: UUID(),
-            threadId: threadIdForSession(sessionId),
-            sessionId: sessionId,
-            role: .user,
-            text: trimmedQuestion,
-            citations: [],
-            createdAt: Date()
-        )
-
         do {
-            try await repository.appendChatMessage(userMessage)
-            currentChatMessages.append(userMessage)
-
-            let provider: any TranscriptChatProvider
-            switch settings.cloudProvider {
-            case .azureOpenAI:
-                guard settings.azureConfig.isChatConfigured else {
-                    throw AppError.providerUnavailable(reason: L10n.tr("error.chat.azure_not_configured"))
-                }
-                provider = AzureTranscriptChatProvider(repository: repository)
-            case .openAI:
-                guard settings.openAIConfig.isConfigured else {
-                    throw AppError.providerUnavailable(reason: L10n.tr("error.chat.openai_not_configured"))
-                }
-                provider = OpenAITranscriptChatProvider(repository: repository)
-            case .lmStudio:
-                guard settings.lmStudioConfig.isConfigured else {
-                    throw AppError.providerUnavailable(reason: L10n.tr("error.chat.lmstudio_not_configured"))
-                }
-                provider = LMStudioTranscriptChatProvider(repository: repository)
-            }
-
-            let response = try await provider.answer(question: trimmedQuestion, transcriptId: sessionId, strategy: .lexicalTopK)
-
-            let assistantMessage = ChatMessage(
-                id: UUID(),
-                threadId: userMessage.threadId,
+            let preparedConversation = try await assistantService.prepareConversation(
+                question: trimmedQuestion,
                 sessionId: sessionId,
-                role: .assistant,
-                text: response.text,
-                citations: response.citations,
-                createdAt: Date()
+                settings: settings
             )
+            try await repository.appendChatMessage(preparedConversation.userMessage)
+            appendChatMessageToCurrentSessionIfSelected(preparedConversation.userMessage, sessionId: sessionId)
+            isBusy = true
+            defer { isBusy = false }
 
-            try await repository.appendChatMessage(assistantMessage)
-            currentChatMessages.append(assistantMessage)
+            try await consumeStreamingAssistantMessage(
+                sessionId: sessionId,
+                threadId: preparedConversation.userMessage.threadId,
+                citations: preparedConversation.assistantCitations,
+                stream: preparedConversation.assistantTextStream
+            )
         } catch {
             transientError = userFacingErrorMessage(error)
         }
@@ -793,6 +760,7 @@ final class AppViewModel: ObservableObject {
                 currentSegments.removeAll(where: { !$0.isFinal })
             }
             applyTheme(nil)
+            await refreshCaptureStatus()
             await refreshLMStudioRuntimeStatus()
         } catch {
             transientError = userFacingErrorMessage(error)
@@ -813,6 +781,7 @@ final class AppViewModel: ObservableObject {
         }
         do {
             try await repository.saveSettings(settings)
+            await refreshCaptureStatus()
         } catch {
             transientError = userFacingErrorMessage(error)
         }
@@ -911,65 +880,33 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func pickTranscriptionProvider() throws -> TranscriptionProvider {
-        switch settings.transcriptionConfig.providerType {
-        case .localVoxtral:
-            return localProvider
-        case .azure:
-            guard settings.azureConfig.isTranscriptionConfigured else {
-                throw AppError.providerUnavailable(reason: L10n.tr("error.transcription.azure_not_configured"))
-            }
-            return azureProvider
-        case .openAI:
-            guard settings.openAIConfig.isConfigured else {
-                throw AppError.providerUnavailable(reason: L10n.tr("error.transcription.openai_not_configured"))
-            }
-            return openAIProvider
-        }
-    }
-
-    private func providerForStop() -> any TranscriptionProvider {
-        switch settings.transcriptionConfig.providerType {
-        case .localVoxtral:
-            return localProvider
-        case .azure:
-            return azureProvider
-        case .openAI:
-            return openAIProvider
-        }
-    }
-
-    private func chunkTranscriptForRetrieval(_ transcript: Transcript, maxChars: Int = 480) -> [String] {
-        var chunks: [String] = []
-        var current = ""
-
-        for segment in transcript.segments {
-            let speakerPrefix = segment.speakerLabel.map { "\($0): " } ?? ""
-            let piece = "[\(segment.startMs)-\(segment.endMs)] \(speakerPrefix)\(segment.text)\n"
-            if current.count + piece.count > maxChars && !current.isEmpty {
-                chunks.append(current)
-                current = piece
-            } else {
-                current += piece
-            }
-        }
-
-        if !current.isEmpty {
-            chunks.append(current)
-        }
-
-        return chunks
-    }
-
-    private func refreshCaptureStatusFromAudioEngine() {
-        guard let hybrid = audioEngine as? HybridAudioCaptureEngine else {
-            localCaptureStatusText = L10n.tr("ui.status.audio.active")
-            localCaptureWarningText = nil
-            return
-        }
-        let status = hybrid.captureStatusSummary()
+    private func applyCaptureStatus(_ status: (mode: LocalAudioCaptureMode, warning: String?)) {
         localCaptureStatusText = L10n.tr("ui.status.audio.mode", status.mode.localizedLabel)
         localCaptureWarningText = status.warning
+    }
+
+    private func configuredCaptureStatus() async -> (mode: LocalAudioCaptureMode, warning: String?) {
+        switch settings.transcriptionConfig.audioCaptureMode {
+        case .microphoneOnly:
+            return (.microphoneOnly, nil)
+        case .microphoneAndSystem:
+            let permission = await Permissions.refreshScreenCaptureState()
+            guard permission == .granted else {
+                return (.microphoneOnly, Permissions.screenCapturePermissionGuidanceMessage())
+            }
+            return (.microphoneAndSystem, nil)
+        }
+    }
+
+    private func refreshCaptureStatus() async {
+        if activeSessionStatus == .recording || activeSessionStatus == .paused || activeSessionStatus == .finalizing,
+           let liveStatus = recordingWorkflow.liveCaptureStatusSummary() {
+            applyCaptureStatus(liveStatus)
+            return
+        }
+
+        let idleStatus = await configuredCaptureStatus()
+        applyCaptureStatus(idleStatus)
     }
 
     private func handleLocalRuntimeEvent(_ event: LocalFluidAudioProvider.RuntimeEvent) {
@@ -1161,9 +1098,76 @@ final class AppViewModel: ObservableObject {
         return pow(boosted, 0.45)
     }
 
-    private func threadIdForSession(_ sessionId: UUID) -> UUID {
-        let current = currentChatMessages.first(where: { $0.sessionId == sessionId })?.threadId
-        return current ?? UUID()
+    private func appendChatMessageToCurrentSessionIfSelected(_ message: ChatMessage, sessionId: UUID) {
+        guard selectedSessionId == sessionId else { return }
+        currentChatMessages.append(message)
+    }
+
+    private func updateChatMessageInCurrentSessionIfSelected(_ message: ChatMessage, sessionId: UUID) {
+        guard selectedSessionId == sessionId else { return }
+        if let index = currentChatMessages.firstIndex(where: { $0.id == message.id }) {
+            currentChatMessages[index] = message
+        } else {
+            currentChatMessages.append(message)
+        }
+    }
+
+    private func removeChatMessageFromCurrentSessionIfSelected(messageId: UUID, sessionId: UUID) {
+        guard selectedSessionId == sessionId else { return }
+        currentChatMessages.removeAll(where: { $0.id == messageId })
+    }
+
+    private func persistAssistantMessage(
+        sessionId: UUID,
+        threadId: UUID,
+        text: String,
+        citations: [TranscriptCitation]
+    ) async throws {
+        let assistantMessage = ChatMessage(
+            id: UUID(),
+            threadId: threadId,
+            sessionId: sessionId,
+            role: .assistant,
+            text: text,
+            citations: citations,
+            createdAt: Date()
+        )
+
+        try await repository.appendChatMessage(assistantMessage)
+        appendChatMessageToCurrentSessionIfSelected(assistantMessage, sessionId: sessionId)
+    }
+
+    private func consumeStreamingAssistantMessage(
+        sessionId: UUID,
+        threadId: UUID,
+        citations: [TranscriptCitation],
+        stream: AsyncThrowingStream<String, Error>
+    ) async throws {
+        let createdAt = Date()
+        var assistantMessage = ChatMessage(
+            id: UUID(),
+            threadId: threadId,
+            sessionId: sessionId,
+            role: .assistant,
+            text: "",
+            citations: citations,
+            createdAt: createdAt
+        )
+
+        appendChatMessageToCurrentSessionIfSelected(assistantMessage, sessionId: sessionId)
+
+        do {
+            for try await chunk in stream {
+                assistantMessage.text += chunk
+                updateChatMessageInCurrentSessionIfSelected(assistantMessage, sessionId: sessionId)
+            }
+
+            try await repository.appendChatMessage(assistantMessage)
+            updateChatMessageInCurrentSessionIfSelected(assistantMessage, sessionId: sessionId)
+        } catch {
+            removeChatMessageFromCurrentSessionIfSelected(messageId: assistantMessage.id, sessionId: sessionId)
+            throw error
+        }
     }
 
     private func syncResolvedLanguage() {
@@ -1330,12 +1334,15 @@ final class AppViewModel: ObservableObject {
     }
 
     private func onboardingRequirementsSatisfied(for settings: AppSettings) async -> Bool {
-        let micGranted = Permissions.microphoneState() == .granted
-        guard micGranted else { return false }
-        if settings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem {
-            return await Permissions.refreshScreenCaptureState() == .granted
-        }
-        return true
+        let snapshot = OnboardingRequirementSnapshot(
+            meetsMinimumRequirements: DeviceGuard.inspect().meetsMinimumRequirements,
+            microphonePermission: Permissions.microphoneState(),
+            screenCapturePermission: settings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem
+                ? await Permissions.refreshScreenCaptureState()
+                : .notDetermined,
+            selectedCaptureMode: settings.transcriptionConfig.audioCaptureMode
+        )
+        return OnboardingRequirementsEvaluator.permissionsStepIsSatisfied(snapshot)
     }
 
     private func normalizeSettings(_ incoming: AppSettings) -> AppSettings {

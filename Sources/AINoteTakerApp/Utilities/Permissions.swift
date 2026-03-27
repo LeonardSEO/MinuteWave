@@ -11,6 +11,8 @@ enum PermissionState: String {
 }
 
 enum Permissions {
+    private static let screenCaptureStateLock = NSLock()
+    private static var lastResolvedScreenCaptureState: PermissionState?
     private static let screenCapturePermissionErrorMarkers: [String] = [
         "permission",
         "not authorized",
@@ -47,9 +49,15 @@ enum Permissions {
         }
     }
 
-    static func quickScreenCaptureState(preflightGranted: Bool) -> PermissionState {
+    static func quickScreenCaptureState(preflightGranted: Bool, lastKnownState: PermissionState? = cachedScreenCaptureState()) -> PermissionState {
         if preflightGranted {
             return .granted
+        }
+        if lastKnownState == .granted {
+            return .granted
+        }
+        if lastKnownState == .denied {
+            return .denied
         }
         return .notDetermined
     }
@@ -76,7 +84,10 @@ enum Permissions {
     @MainActor
     static func refreshScreenCaptureState() async -> PermissionState {
         let quick = quickScreenCaptureState(preflightGranted: CGPreflightScreenCaptureAccess())
-        if quick == .granted { return .granted }
+        if quick == .granted || quick == .denied {
+            cacheScreenCaptureState(quick)
+            return quick
+        }
 
         guard #available(macOS 13.0, *) else {
             return quick
@@ -85,19 +96,30 @@ enum Permissions {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             if !content.displays.isEmpty {
+                cacheScreenCaptureState(.granted)
                 return .granted
             }
+            cacheScreenCaptureState(.notDetermined)
             return .notDetermined
         } catch {
-            return classifyScreenCaptureProbeFailure(error)
+            let classified = classifyScreenCaptureProbeFailure(error)
+            cacheScreenCaptureState(classified)
+            return classified
         }
     }
 
     static func requestScreenCapture() -> Bool {
         if CGPreflightScreenCaptureAccess() {
+            cacheScreenCaptureState(.granted)
             return true
         }
-        return CGRequestScreenCaptureAccess()
+        let granted = CGRequestScreenCaptureAccess()
+        cacheScreenCaptureState(granted ? .granted : .notDetermined)
+        return granted
+    }
+
+    static func screenCapturePermissionGuidanceMessage() -> String {
+        L10n.tr("ui.permissions.screen_recording_guidance")
     }
 
     static func openMicrophoneSettings() {
@@ -117,5 +139,17 @@ enum Permissions {
         process.arguments = [appURL.path]
         try? process.run()
         NSApp.terminate(nil)
+    }
+
+    private static func cachedScreenCaptureState() -> PermissionState? {
+        screenCaptureStateLock.lock()
+        defer { screenCaptureStateLock.unlock() }
+        return lastResolvedScreenCaptureState
+    }
+
+    private static func cacheScreenCaptureState(_ state: PermissionState) {
+        screenCaptureStateLock.lock()
+        lastResolvedScreenCaptureState = state
+        screenCaptureStateLock.unlock()
     }
 }

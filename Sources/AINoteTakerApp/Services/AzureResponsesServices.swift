@@ -131,16 +131,10 @@ final class AzureSummarizationProvider: SummarizationProvider, @unchecked Sendab
             temperature: 0.1
         )
 
-        return MeetingSummary(
-            title: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
-            executiveSummary: response,
-            decisions: [],
-            actionItems: [],
-            openQuestions: [],
-            followUps: [],
-            risks: [],
-            generatedAt: Date(),
-            version: 1
+        return MeetingSummaryBuilder.build(
+            from: response,
+            fallbackTitle: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
+            generatedAt: Date()
         )
     }
 }
@@ -200,7 +194,7 @@ final class AzureTranscriptChatProvider: TranscriptChatProvider, @unchecked Send
             return lhs.1 > rhs.1
         }
 
-        let top = scored.prefix(6).map(\ .0)
+        let top = scored.prefix(6).map(\.0)
         return top.isEmpty ? Array(segments.prefix(6)) : top
     }
 

@@ -28,10 +28,13 @@ struct OnboardingWizardView: View {
         draftSettings.transcriptionConfig.audioCaptureMode == .microphoneAndSystem
     }
 
-    private var permissionsSatisfied: Bool {
-        let micOk = micPermission == .granted
-        let screenOk = !requiresScreenPermission || screenPermission == .granted
-        return micOk && screenOk
+    private var requirementsSnapshot: OnboardingRequirementSnapshot {
+        OnboardingRequirementSnapshot(
+            meetsMinimumRequirements: caps.meetsMinimumRequirements,
+            microphonePermission: micPermission,
+            screenCapturePermission: screenPermission,
+            selectedCaptureMode: draftSettings.transcriptionConfig.audioCaptureMode
+        )
     }
 
     var body: some View {
@@ -148,13 +151,7 @@ struct OnboardingWizardView: View {
     }
 
     private var canContinue: Bool {
-        if step == 0 {
-            return caps.meetsMinimumRequirements && permissionsSatisfied
-        }
-        if step == 2 {
-            return permissionsSatisfied
-        }
-        return true
+        OnboardingRequirementsEvaluator.canContinue(step: step, snapshot: requirementsSnapshot)
     }
 
     private var requirementsStep: some View {
@@ -228,11 +225,13 @@ struct OnboardingWizardView: View {
                 Text(L10n.tr("ui.onboarding.requirements_not_met"))
                     .foregroundStyle(.red)
             }
-            if !permissionsSatisfied {
-                Text(requiresScreenPermission
-                     ? L10n.tr("ui.onboarding.allow_mic_and_screen")
-                     : L10n.tr("ui.onboarding.allow_mic_only"))
+            if micPermission != .granted {
+                Text(L10n.tr("ui.onboarding.allow_mic_only"))
                     .foregroundStyle(.orange)
+            }
+            if OnboardingRequirementsEvaluator.screenCaptureNeedsAttention(requirementsSnapshot) {
+                Text(L10n.tr("ui.onboarding.screen_recording_optional"))
+                    .foregroundStyle(.secondary)
             }
 
             Divider()

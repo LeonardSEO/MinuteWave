@@ -219,9 +219,11 @@ struct LMStudioRuntimeClient {
 }
 
 struct LMStudioOpenAICompatClient {
+    private let session: URLSession
     private let keychain: KeychainStore
 
-    init(keychain: KeychainStore = KeychainStore()) {
+    init(session: URLSession = .shared, keychain: KeychainStore = KeychainStore()) {
+        self.session = session
         self.keychain = keychain
     }
 
@@ -252,26 +254,19 @@ struct LMStudioOpenAICompatClient {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.lmstudio.chat_url_invalid"))
         }
 
-        let payload: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "max_completion_tokens": maxCompletionTokens,
-            "temperature": temperature
-        ]
-
-        let body = try JSONSerialization.data(withJSONObject: payload)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let apiKey = try apiKeyIfPresent(config: config), !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        let request = try makeChatCompletionRequest(
+            url: url,
+            config: config,
+            model: model,
+            messages: messages,
+            maxCompletionTokens: maxCompletionTokens,
+            temperature: temperature,
+            stream: false
+        )
 
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
+            session: session,
             configuration: HTTPRetryPolicy.azureDefault
         )
 
@@ -287,6 +282,105 @@ struct LMStudioOpenAICompatClient {
                 reason: L10n.tr("error.lmstudio.http", http.statusCode, L10n.tr("error.safe.network_failure"))
             )
         }
+    }
+
+    func performStreamingChatCompletionCall(
+        config: LMStudioConfig,
+        model: String,
+        messages: [[String: String]],
+        maxCompletionTokens: Int = 2048,
+        temperature: Double = 0.2
+    ) throws -> AsyncThrowingStream<String, Error> {
+        try validateConfig(config)
+
+        guard let url = chatCompletionURL(baseURL: config.endpoint) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.lmstudio.chat_url_invalid"))
+        }
+
+        let request = try makeChatCompletionRequest(
+            url: url,
+            config: config,
+            model: model,
+            messages: messages,
+            maxCompletionTokens: maxCompletionTokens,
+            temperature: temperature,
+            stream: true
+        )
+
+        return AsyncThrowingStream { continuation in
+            let streamTask = Task {
+                do {
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw AppError.networkFailure(reason: L10n.tr("error.safe.network_failure"))
+                    }
+
+                    switch http.statusCode {
+                    case 200...299:
+                        break
+                    case 401, 403:
+                        throw AppError.networkFailure(reason: L10n.tr("error.lmstudio.auth_failed", http.statusCode))
+                    case 429:
+                        throw AppError.networkFailure(reason: L10n.tr("error.lmstudio.rate_limited"))
+                    default:
+                        throw AppError.networkFailure(
+                            reason: L10n.tr("error.lmstudio.http", http.statusCode, L10n.tr("error.safe.network_failure"))
+                        )
+                    }
+
+                    for try await line in bytes.lines {
+                        switch try LMStudioChatCompletionStreamParser.parse(line: line) {
+                        case .text(let text):
+                            continuation.yield(text)
+                        case .done:
+                            continuation.finish()
+                            return
+                        case .ignored:
+                            continue
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func makeChatCompletionRequest(
+        url: URL,
+        config: LMStudioConfig,
+        model: String,
+        messages: [[String: String]],
+        maxCompletionTokens: Int,
+        temperature: Double,
+        stream: Bool
+    ) throws -> URLRequest {
+        let payload: [String: Any] = [
+            "model": model,
+            "messages": messages,
+            "max_tokens": maxCompletionTokens,
+            "temperature": temperature,
+            "stream": stream
+        ]
+
+        let body = try JSONSerialization.data(withJSONObject: payload)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let apiKey = try apiKeyIfPresent(config: config), !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        return request
     }
 
     func chatCompletionURL(baseURL: String) -> URL? {
@@ -373,21 +467,20 @@ final class LMStudioSummarizationProvider: SummarizationProvider, @unchecked Sen
             temperature: 0.1
         )
 
-        return MeetingSummary(
-            title: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
-            executiveSummary: response,
-            decisions: [],
-            actionItems: [],
-            openQuestions: [],
-            followUps: [],
-            risks: [],
-            generatedAt: Date(),
-            version: 1
+        return MeetingSummaryBuilder.build(
+            from: response,
+            fallbackTitle: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
+            generatedAt: Date()
         )
     }
 }
 
 final class LMStudioTranscriptChatProvider: TranscriptChatProvider, @unchecked Sendable {
+    struct StreamingAnswer: Sendable {
+        var citations: [TranscriptCitation]
+        var textStream: AsyncThrowingStream<String, Error>
+    }
+
     private let runtimeClient: LMStudioRuntimeClient
     private let client: LMStudioOpenAICompatClient
     private let repository: SessionRepository
@@ -432,6 +525,38 @@ final class LMStudioTranscriptChatProvider: TranscriptChatProvider, @unchecked S
         }
 
         return ChatAnswer(text: text, citations: citations)
+    }
+
+    func streamAnswer(question: String, transcriptId: UUID, strategy: RetrievalStrategy) async throws -> StreamingAnswer {
+        let settings = try await repository.loadSettings()
+        let segments = try await repository.listSegments(sessionId: transcriptId)
+        let model = try await runtimeClient.resolveModelIdentifier(config: settings.lmStudioConfig)
+
+        let selected = retrieveSegments(question: question, segments: segments, strategy: strategy)
+        let context = selected.map { "[\($0.startMs)-\($0.endMs)] \($0.text)" }.joined(separator: "\n")
+
+        let stream = try client.performStreamingChatCompletionCall(
+            config: settings.lmStudioConfig,
+            model: model,
+            messages: [
+                [
+                    "role": "system",
+                    "content": L10n.tr("prompt.chat.system")
+                ],
+                [
+                    "role": "user",
+                    "content": "Vraag: \(question)\n\nContext:\n\(context)"
+                ]
+            ],
+            maxCompletionTokens: 2048,
+            temperature: 0.2
+        )
+
+        let citations = selected.map {
+            TranscriptCitation(segmentId: $0.id, startMs: $0.startMs, endMs: $0.endMs)
+        }
+
+        return StreamingAnswer(citations: citations, textStream: stream)
     }
 
     private func retrieveSegments(question: String, segments: [TranscriptSegment], strategy: RetrievalStrategy) -> [TranscriptSegment] {

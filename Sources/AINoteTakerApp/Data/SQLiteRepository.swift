@@ -77,6 +77,15 @@ final class SQLiteRepository: SessionRepository, @unchecked Sendable {
         }
     }
 
+    func deleteSession(sessionId: UUID) async throws {
+        try queue.sync {
+            try execute(
+                "DELETE FROM sessions WHERE id = ?",
+                bindings: [.text(sessionId.uuidString)]
+            )
+        }
+    }
+
     func updateSessionStatus(sessionId: UUID, status: SessionStatus, endedAt: Date?) async throws {
         try queue.sync {
             try execute(

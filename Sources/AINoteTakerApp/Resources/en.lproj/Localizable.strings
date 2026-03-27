@@ -268,6 +268,7 @@
 "ui.onboarding.ai_optional" = "AI (optional)";
 "ui.onboarding.allow_mic_and_screen" = "Allow microphone and screen recording before continuing.";
 "ui.onboarding.allow_mic_only" = "Allow microphone before continuing.";
+"ui.onboarding.screen_recording_optional" = "Screen recording can be granted later. Until then, MinuteWave records microphone only.";
 "ui.onboarding.apple_silicon" = "Apple Silicon";
 "ui.onboarding.azure.configure_hint" = "Configure Azure OpenAI for summary and transcript chat.";
 "ui.onboarding.azure.endpoint" = "Azure endpoint";
@@ -300,6 +301,7 @@
 "ui.permission.denied" = "Denied";
 "ui.permission.granted" = "Granted";
 "ui.permission.not_requested" = "Not requested";
+"ui.permissions.screen_recording_guidance" = "System audio is unavailable because Screen Recording permission is not active. Check macOS Settings > Privacy & Security > Screen & System Audio Recording. After enabling it, restart MinuteWave once or use Microphone only.";
 
 "ui.settings.api_key" = "API key";
 "ui.settings.api_key_optional" = "API key (optional)";

@@ -396,6 +396,66 @@ func sessionLifecycle() async throws {
     #expect(sessions[0].name == "Demo")
 }
 
+@Test("Session deletion cascades transcript summary and chat data")
+func sessionDeletionCascadesRelatedData() async throws {
+    let tempDB = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("ai-note-taker-tests-\(UUID().uuidString).sqlite")
+
+    let repository = try SQLiteRepository(databaseURL: tempDB)
+    defer { try? FileManager.default.removeItem(at: tempDB) }
+
+    let session = try await repository.createSession(name: "Delete me", provider: .localVoxtral)
+    let segment = TranscriptSegment(
+        id: UUID(),
+        sessionId: session.id,
+        startMs: 0,
+        endMs: 900,
+        text: "Delete this transcript too.",
+        confidence: 0.9,
+        sourceProvider: .localVoxtral,
+        isFinal: true
+    )
+    try await repository.insertSegment(segment)
+    try await repository.upsertTranscriptChunks(sessionId: session.id, chunks: ["Delete this transcript too."])
+    try await repository.saveSummary(
+        sessionId: session.id,
+        summary: MeetingSummary(
+            title: "Delete me",
+            executiveSummary: "Summary",
+            decisions: ["Delete it"],
+            actionItems: ["Delete it | Leonard | Today"],
+            openQuestions: [],
+            followUps: [],
+            risks: [],
+            generatedAt: Date(),
+            version: 1
+        )
+    )
+    try await repository.appendChatMessage(
+        ChatMessage(
+            id: UUID(),
+            threadId: UUID(),
+            sessionId: session.id,
+            role: .assistant,
+            text: "Delete this message too.",
+            citations: [],
+            createdAt: Date()
+        )
+    )
+
+    try await repository.deleteSession(sessionId: session.id)
+
+    let deletedSession = try await repository.getSession(id: session.id)
+    let remainingSegments = try await repository.listSegments(sessionId: session.id)
+    let remainingSummary = try await repository.latestSummary(sessionId: session.id)
+    let remainingMessages = try await repository.listChatMessages(sessionId: session.id)
+
+    #expect(deletedSession == nil)
+    #expect(remainingSegments.isEmpty)
+    #expect(remainingSummary == nil)
+    #expect(remainingMessages.isEmpty)
+}
+
 @Test("Transcript segment speaker label roundtrip")
 func transcriptSpeakerLabelRoundTrip() async throws {
     let tempDB = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -812,6 +872,56 @@ func lmStudioLoadedModelParser() throws {
     #expect(models[0].identifier == "meta-llama-3-8b-instruct")
 }
 
+@Test("Meeting summary builder maps structured markdown into summary fields")
+func meetingSummaryBuilderParsesStructuredMarkdown() {
+    let markdown = """
+## 1. Context
+Weekly product sync for MinuteWave launch readiness.
+
+## 2. Executive Summary
+- Screen recording is still flaky in TestFlight-like runs.
+- LM Studio streaming must be fixed before beta.
+
+## 3. Decisions
+- Prioritize TestFlight over direct DMG release.
+
+## 4. Action Items
+- Fix LM Studio streaming | Leonard | Friday
+- Set up Xcode signing | Maciej | Friday
+
+## 5. Open Questions and Risks
+- Do we need audio export in v1?
+- Risk: Screen recording permission state is unreliable after install.
+
+## 6. Key Details
+- Beta starts next week.
+
+## 7. Next Steps (Next 7 Days)
+- Prepare the first internal beta checklist.
+"""
+
+    let summary = MeetingSummaryBuilder.build(from: markdown, fallbackTitle: "Fallback title", generatedAt: .distantPast)
+
+    #expect(summary.title == "Weekly product sync for MinuteWave launch readiness")
+    #expect(summary.executiveSummary == markdown)
+    #expect(summary.decisions == ["Prioritize TestFlight over direct DMG release."])
+    #expect(summary.actionItems == ["Fix LM Studio streaming | Leonard | Friday", "Set up Xcode signing | Maciej | Friday"])
+    #expect(summary.openQuestions == ["Do we need audio export in v1?"])
+    #expect(summary.risks == ["Risk: Screen recording permission state is unreliable after install."])
+    #expect(summary.followUps == ["Prepare the first internal beta checklist."])
+}
+
+@Test("LM Studio streaming parser extracts delta chunks and done marker")
+func lmStudioStreamingParserExtractsChunks() throws {
+    let chunk1 = #"data: {"choices":[{"delta":{"content":"Hello"}}]}"#
+    let chunk2 = #"data: {"choices":[{"delta":{"content":[{"type":"text","text":" world"}]}}]}"#
+    let done = "data: [DONE]"
+
+    #expect(try LMStudioChatCompletionStreamParser.parse(line: chunk1) == .text("Hello"))
+    #expect(try LMStudioChatCompletionStreamParser.parse(line: chunk2) == .text(" world"))
+    #expect(try LMStudioChatCompletionStreamParser.parse(line: done) == .done)
+}
+
 @Test("Waveform smoothing helper is deterministic")
 func waveformSmoothingDeterministic() {
     let rising = AppViewModel.smoothedWaveformLevel(current: 0.1, target: 0.9, riseAlpha: 0.5, fallAlpha: 0.2)
@@ -825,6 +935,12 @@ func waveformSmoothingDeterministic() {
 func screenCaptureQuickState() {
     #expect(Permissions.quickScreenCaptureState(preflightGranted: true) == .granted)
     #expect(Permissions.quickScreenCaptureState(preflightGranted: false) == .notDetermined)
+}
+
+@Test("Screen capture quick state reuses last known granted state")
+func screenCaptureQuickStateUsesLastKnownGrant() {
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .granted) == .granted)
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .denied) == .denied)
 }
 
 @Test("Screen capture probe failure classification detects denied vs unknown")
@@ -842,6 +958,33 @@ func screenCaptureProbeFailureClassification() {
         userInfo: [NSLocalizedDescriptionKey: "A generic stream setup failure occurred."]
     )
     #expect(Permissions.classifyScreenCaptureProbeFailure(unknownError) == .notDetermined)
+}
+
+@Test("Onboarding permissions step defers screen recording until recording time")
+func onboardingPermissionsStepDefersScreenRecording() {
+    let snapshot = OnboardingRequirementSnapshot(
+        meetsMinimumRequirements: true,
+        microphonePermission: .granted,
+        screenCapturePermission: .denied,
+        selectedCaptureMode: .microphoneAndSystem
+    )
+
+    #expect(OnboardingRequirementsEvaluator.permissionsStepIsSatisfied(snapshot) == true)
+    #expect(OnboardingRequirementsEvaluator.canContinue(step: 0, snapshot: snapshot) == true)
+    #expect(OnboardingRequirementsEvaluator.screenCaptureNeedsAttention(snapshot) == true)
+}
+
+@Test("Onboarding permissions step still requires microphone grant")
+func onboardingPermissionsStepRequiresMicrophone() {
+    let snapshot = OnboardingRequirementSnapshot(
+        meetsMinimumRequirements: true,
+        microphonePermission: .notDetermined,
+        screenCapturePermission: .granted,
+        selectedCaptureMode: .microphoneAndSystem
+    )
+
+    #expect(OnboardingRequirementsEvaluator.permissionsStepIsSatisfied(snapshot) == false)
+    #expect(OnboardingRequirementsEvaluator.canContinue(step: 2, snapshot: snapshot) == false)
 }
 
 @Test("Audio capture mode changes are blocked while recording-like statuses are active")

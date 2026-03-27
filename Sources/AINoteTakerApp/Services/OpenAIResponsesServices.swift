@@ -138,16 +138,10 @@ final class OpenAISummarizationProvider: SummarizationProvider, @unchecked Senda
             temperature: 0.1
         )
 
-        return MeetingSummary(
-            title: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
-            executiveSummary: response,
-            decisions: [],
-            actionItems: [],
-            openQuestions: [],
-            followUps: [],
-            risks: [],
-            generatedAt: Date(),
-            version: 1
+        return MeetingSummaryBuilder.build(
+            from: response,
+            fallbackTitle: "Auto summary \(Date().formatted(date: .abbreviated, time: .shortened))",
+            generatedAt: Date()
         )
     }
 }

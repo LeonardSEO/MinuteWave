@@ -26,6 +26,7 @@ protocol AudioCaptureEngine: Sendable {
 
 protocol SessionRepository: Sendable {
     func createSession(name: String, provider: TranscriptionProviderType) async throws -> SessionRecord
+    func deleteSession(sessionId: UUID) async throws
     func updateSessionStatus(sessionId: UUID, status: SessionStatus, endedAt: Date?) async throws
     func updateSessionName(sessionId: UUID, name: String) async throws
     func listSessions(search: String) async throws -> [SessionRecord]
