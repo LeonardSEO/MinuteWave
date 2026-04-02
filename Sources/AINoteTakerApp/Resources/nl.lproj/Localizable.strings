@@ -115,40 +115,6 @@
 "azure.parse.feedback.success_with_translation_warning" = "Succesvol geparseerd. Let op: audio/translations gedetecteerd; runtime gebruikt nog steeds audio/transcriptions.";
 "azure.parse.warning.multiple_endpoints" = "Meerdere Azure endpoints gedetecteerd; slechts één endpoint kan worden toegepast.";
 
-"Capture Mic-only" = "Alleen microfoon";
-"Capture Mic + System" = "Microfoon + systeemaudio";
-"Settings" = "Instellingen";
-"Save" = "Opslaan";
-"Transcript" = "Transcript";
-"Summary" = "Samenvatting";
-"General" = "Algemeen";
-"Advanced" = "Geavanceerd";
-"Cancel" = "Annuleren";
-"System" = "Systeem";
-"English" = "Engels";
-"Collapse full transcript by default" = "Volledige transcript standaard inklappen";
-"Auto summarize after stop" = "Automatisch samenvatten na stop";
-"Cloud provider for summary + chat" = "Cloudprovider voor samenvatting en chat";
-"FluidAudio (Parakeet v3)" = "FluidAudio (Parakeet v3)";
-"Local FluidAudio" = "Lokale FluidAudio";
-"Endpoint" = "Endpoint";
-"Chat API version" = "Chat API-versie";
-"Transcription API version" = "Transcriptie API-versie";
-"Chat deployment" = "Chat-deployment";
-"Summary deployment" = "Samenvatting-deployment";
-"Transcription deployment" = "Transcriptie-deployment";
-"Base URL" = "Basis-URL";
-"Chat model" = "Chatmodel";
-"Summary model" = "Samenvattingsmodel";
-"Transcription model" = "Transcriptiemodel";
-"API key (optional update)" = "API-key (optionele update)";
-"Encryption enabled" = "Encryptie ingeschakeld";
-"Storage: %@" = "Opslag: %@";
-"Recording" = "Opname";
-"Start" = "Start";
-"Stop" = "Stop";
-"Error" = "Fout";
-
 /* UI namespaced localization keys */
 "ui.chat.role.assistant" = "Assistent";
 "ui.chat.role.system" = "Systeem";
@@ -213,6 +179,10 @@
 "ui.main.summary" = "Samenvatting";
 "ui.main.transcript" = "Transcript";
 "ui.main.transcript_collapsed" = "Transcript is ingeklapt.";
+"ui.main.recording_in_progress" = "Opname actief. Transcript verschijnt nadat je stopt.";
+"ui.main.tab.chat" = "Chat";
+"ui.main.tab.summary" = "Samenvatting";
+"ui.main.tab.transcript" = "Transcript";
 "ui.main.transcript_processing" = "Transcript wordt verwerkt...";
 "ui.main.transcript_processing_detail" = "Even wachten terwijl de opname wordt afgerond en getranscribeerd.";
 "ui.main.transcription_status_chip" = "Transcriptiestatus: %@";
@@ -274,6 +244,7 @@
 "ui.settings.keychain_prompt_hint" = "Bij de eerste keychain prompt: kies 'Always Allow' zodat je niet telkens opnieuw je wachtwoord hoeft in te vullen.";
 "ui.settings.language.dutch" = "Nederlands";
 "ui.settings.language.english" = "Engels";
+"ui.settings.language.polish" = "Pools";
 "ui.settings.language.system" = "Systeem";
 "ui.settings.lmstudio.endpoint" = "Eindpunt";
 "ui.settings.lmstudio.help" = "Gebruik LM Studio om lokale modellen te draaien voor samenvatting en chat.";

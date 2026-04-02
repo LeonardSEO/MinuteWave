@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppLanguageResolver {
-    static let supportedLanguageCodes = ["nl", "en"]
+    static let supportedLanguageCodes = ["nl", "en", "pl"]
     static let persistedResolvedLanguageCodeKey = "resolvedAppLanguageCodeV1"
 
     static func resolveLanguageCode(
@@ -15,6 +15,8 @@ enum AppLanguageResolver {
             return "nl"
         case .english:
             return "en"
+        case .polish:
+            return "pl"
         }
     }
 
@@ -37,6 +39,9 @@ enum AppLanguageResolver {
             if lower.hasPrefix("en") {
                 return "en"
             }
+            if lower.hasPrefix("pl") {
+                return "pl"
+            }
         }
 
         return "en"
@@ -46,6 +51,8 @@ enum AppLanguageResolver {
         switch languageCode {
         case "nl":
             return Locale(identifier: "nl_NL")
+        case "pl":
+            return Locale(identifier: "pl_PL")
         default:
             return Locale(identifier: "en_US")
         }

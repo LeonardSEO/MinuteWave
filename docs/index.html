@@ -7,32 +7,34 @@
   <meta name="description" content="MinuteWave turns meetings into notes, summaries, and follow-ups. Privacy-first, local-first, open-source macOS app with optional AI providers.">
   <meta property="og:title" content="MinuteWave — AI Meeting Notes for Mac">
   <meta property="og:description" content="Record, transcribe, summarize, and chat with your meetings — without giving up control of your data. Free & open-source.">
-  <meta property="og:image" content="https://leonardseo.github.io/MinuteWave/assets/og-image.png">
+  <meta property="og:image" content="assets/icon-clean.png">
   <meta property="og:url" content="https://leonardseo.github.io/MinuteWave/">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙</text></svg>">
+  <link rel="icon" href="assets/icon-clean.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --brand:       #7C3AED;
-      --brand-dark:  #5B21B6;
-      --brand-light: #EDE9FE;
-      --brand-mid:   #8B5CF6;
-      --cta:         #7C3AED;
-      --cta-hover:   #5B21B6;
-      --bg:          #FAFAFA;
-      --surface:     #FFFFFF;
-      --border:      #E5E7EB;
-      --text:        #111827;
-      --text-muted:  #6B7280;
-      --text-light:  #9CA3AF;
-      --radius:      14px;
-      --radius-sm:   8px;
-      --shadow-sm:   0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-      --shadow:      0 4px 16px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
-      --shadow-lg:   0 20px 60px rgba(0,0,0,.10), 0 4px 16px rgba(0,0,0,.06);
+      --brand:        #3E6BFF;
+      --brand-dark:   #2952D9;
+      --brand-light:  #E8EEFF;
+      --brand-mid:    #5580FF;
+      --cta:          #3E6BFF;
+      --cta-hover:    #2952D9;
+      --bg:           #F5F6FA;
+      --surface:      #FFFFFF;
+      --bg-dark:      #171A29;
+      --surface-dark: #1E2235;
+      --border:       #E2E4F0;
+      --text:         #111827;
+      --text-muted:   #6B7280;
+      --text-light:   #9CA3AF;
+      --radius:       14px;
+      --radius-sm:    8px;
+      --shadow-sm:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --shadow:       0 4px 16px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+      --shadow-lg:    0 20px 60px rgba(0,0,0,.10), 0 4px 16px rgba(0,0,0,.06);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -121,18 +123,20 @@
     .hero {
       padding: 80px 24px 72px;
       text-align: center;
+      background: var(--bg-dark);
     }
     .hero-icon {
       width: 96px;
       height: 96px;
       margin: 0 auto 28px;
       border-radius: 22px;
-      background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+      background: transparent;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 12px 40px rgba(109,40,217,.30), 0 2px 8px rgba(0,0,0,.12);
+      box-shadow: 0 12px 40px rgba(23,26,41,.60), 0 2px 8px rgba(0,0,0,.20);
     }
+    .hero-icon img { border-radius: 22px; display: block; width: 96px; height: 96px; object-fit: cover; }
     .hero-tagline {
       font-family: 'Poppins', sans-serif;
       font-size: clamp(2rem, 5vw, 3rem);
@@ -141,12 +145,12 @@
       line-height: 1.15;
       max-width: 680px;
       margin: 0 auto 18px;
-      color: var(--text);
+      color: #fff;
     }
-    .hero-tagline span { color: var(--brand); }
+    .hero-tagline span { color: var(--brand-mid); }
     .hero-sub {
       font-size: clamp(15px, 2.5vw, 17px);
-      color: var(--text-muted);
+      color: rgba(255,255,255,.70);
       max-width: 520px;
       margin: 0 auto 32px;
       line-height: 1.65;
@@ -170,9 +174,9 @@
       font-weight: 600;
       text-decoration: none;
       transition: background 150ms, transform 100ms, box-shadow 150ms;
-      box-shadow: 0 4px 14px rgba(124,58,237,.35);
+      box-shadow: 0 4px 14px rgba(62,107,255,.35);
     }
-    .btn-hero:hover { background: var(--cta-hover); box-shadow: 0 6px 20px rgba(91,33,182,.40); }
+    .btn-hero:hover { background: var(--cta-hover); box-shadow: 0 6px 20px rgba(41,82,217,.45); }
     .btn-hero:active { transform: scale(.98); }
 
     .btn-hero-ghost {
@@ -181,15 +185,15 @@
       gap: 8px;
       padding: 12px 22px;
       border-radius: var(--radius-sm);
-      border: 1.5px solid var(--border);
-      background: transparent;
-      color: var(--text);
+      border: 1.5px solid rgba(255,255,255,.22);
+      background: rgba(255,255,255,.06);
+      color: rgba(255,255,255,.85);
       font-size: 15px;
       font-weight: 500;
       text-decoration: none;
       transition: border-color 150ms, background 150ms;
     }
-    .btn-hero-ghost:hover { border-color: #9CA3AF; background: var(--surface); }
+    .btn-hero-ghost:hover { border-color: rgba(255,255,255,.40); background: rgba(255,255,255,.10); }
 
     .hero-meta {
       margin-top: 20px;
@@ -206,7 +210,8 @@
       font-size: 12.5px;
       color: var(--text-muted);
     }
-    .hero-badge svg { color: var(--brand); }
+    .hero-badge { color: rgba(255,255,255,.60); }
+    .hero-badge svg { color: var(--brand-mid); }
 
     /* ─── SECTION COMMON ─────────────────────────────────── */
     section { padding: 72px 24px; }
@@ -323,12 +328,12 @@
 
     /* ─── PRIVACY ────────────────────────────────────────── */
     #privacy {
-      background: linear-gradient(135deg, #1E1B4B 0%, #2E1065 100%);
+      background: linear-gradient(135deg, #171A29 0%, #0D0F1C 100%);
       color: #fff;
     }
-    #privacy .section-label { color: #C4B5FD; }
+    #privacy .section-label { color: #93AEFF; }
     #privacy .section-heading { color: #fff; }
-    #privacy .section-sub { color: #C4B5FD; }
+    #privacy .section-sub { color: rgba(255,255,255,.65); }
 
     .privacy-grid {
       display: grid;
@@ -347,8 +352,8 @@
       border: 1px solid rgba(255,255,255,.10);
     }
     .privacy-card-good {
-      background: rgba(139,92,246,.20);
-      border: 1px solid rgba(139,92,246,.40);
+      background: rgba(62,107,255,.18);
+      border: 1px solid rgba(62,107,255,.35);
     }
     .privacy-card-label {
       font-size: 11.5px;
@@ -358,7 +363,7 @@
       margin-bottom: 16px;
     }
     .privacy-card-bad .privacy-card-label { color: #F87171; }
-    .privacy-card-good .privacy-card-label { color: #A78BFA; }
+    .privacy-card-good .privacy-card-label { color: #93AEFF; }
     .privacy-card-title {
       font-family: 'Poppins', sans-serif;
       font-size: 16px;
@@ -380,7 +385,7 @@
       line-height: 1.5;
     }
     .privacy-card-bad .privacy-list li { color: #D1D5DB; }
-    .privacy-card-good .privacy-list li { color: #E9D5FF; }
+    .privacy-card-good .privacy-list li { color: #C8D5FF; }
     .privacy-list li svg { flex-shrink: 0; margin-top: 2px; }
 
     /* ─── PROVIDERS ──────────────────────────────────────── */
@@ -439,13 +444,14 @@
       width: 72px;
       height: 72px;
       border-radius: 18px;
-      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+      background: transparent;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 24px;
-      box-shadow: 0 8px 30px rgba(109,40,217,.25);
+      box-shadow: 0 8px 30px rgba(23,26,41,.18);
     }
+    .download-icon img { width: 72px; height: 72px; border-radius: 18px; display: block; object-fit: cover; }
     .download-box h2 {
       font-family: 'Poppins', sans-serif;
       font-size: 1.8rem;
@@ -577,19 +583,7 @@
 <nav>
   <div class="nav-inner">
     <a class="nav-logo" href="#" aria-label="MinuteWave home">
-      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-        <rect width="26" height="26" rx="7" fill="url(#navGrad)"/>
-        <defs>
-          <linearGradient id="navGrad" x1="0" y1="0" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#8B5CF6"/>
-            <stop offset="1" stop-color="#6D28D9"/>
-          </linearGradient>
-        </defs>
-        <rect x="11" y="5" width="4" height="10" rx="2" fill="white"/>
-        <path d="M7 11a6 6 0 0 0 12 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-        <line x1="13" y1="17" x2="13" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-        <line x1="10" y1="20" x2="16" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
+      <img src="assets/icon-clean.png" alt="" width="26" height="26" style="border-radius: 7px; flex-shrink: 0;" aria-hidden="true">
       <span>MinuteWave</span>
     </a>
     <div class="nav-actions">
@@ -612,14 +606,7 @@
 <!-- ══════════════════════════════════ HERO ═══════════════════════════════════ -->
 <header class="hero">
   <div class="hero-icon" aria-hidden="true">
-    <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-      <rect x="22" y="8" width="8" height="20" rx="4" fill="white"/>
-      <path d="M12 22a14 14 0 0 0 28 0" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
-      <line x1="26" y1="36" x2="26" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
-      <line x1="19" y1="42" x2="33" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="38" cy="14" r="6" fill="#C4B5FD" opacity=".8"/>
-      <path d="M36 14l1.5 1.5L40 12" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
+    <img src="assets/icon-clean.png" alt="">
   </div>
 
   <h1 class="hero-tagline">
@@ -888,12 +875,7 @@
   <div class="section-inner">
     <div class="download-box fade-in">
       <div class="download-icon" aria-hidden="true">
-        <svg width="38" height="38" viewBox="0 0 52 52" fill="none">
-          <rect x="22" y="8" width="8" height="20" rx="4" fill="white"/>
-          <path d="M12 22a14 14 0 0 0 28 0" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
-          <line x1="26" y1="36" x2="26" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
-          <line x1="19" y1="42" x2="33" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
-        </svg>
+        <img src="assets/icon-clean.png" alt="">
       </div>
       <h2>Download MinuteWave</h2>
       <p>Free, open-source, and works without any cloud account. Your meetings, your Mac, your data.</p>
@@ -934,19 +916,7 @@
 <footer>
   <div class="footer-inner">
     <a class="footer-logo" href="#" aria-label="MinuteWave">
-      <svg width="20" height="20" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-        <rect width="26" height="26" rx="7" fill="url(#footerGrad)"/>
-        <defs>
-          <linearGradient id="footerGrad" x1="0" y1="0" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#8B5CF6"/>
-            <stop offset="1" stop-color="#6D28D9"/>
-          </linearGradient>
-        </defs>
-        <rect x="11" y="5" width="4" height="10" rx="2" fill="white"/>
-        <path d="M7 11a6 6 0 0 0 12 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-        <line x1="13" y1="17" x2="13" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-        <line x1="10" y1="20" x2="16" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
+      <img src="assets/icon-clean.png" alt="" width="20" height="20" style="border-radius: 5px; flex-shrink: 0;" aria-hidden="true">
       MinuteWave
     </a>
     <nav class="footer-links" aria-label="Footer navigation">

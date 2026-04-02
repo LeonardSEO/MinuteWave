@@ -22,6 +22,8 @@ extension AppLanguagePreference {
             return L10n.tr("ui.settings.language.dutch")
         case .english:
             return L10n.tr("ui.settings.language.english")
+        case .polish:
+            return L10n.tr("ui.settings.language.polish")
         }
     }
 }

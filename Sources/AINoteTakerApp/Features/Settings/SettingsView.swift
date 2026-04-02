@@ -132,6 +132,7 @@ struct SettingsView: View {
                     Text(AppLanguagePreference.system.localizedLabel).tag(AppLanguagePreference.system)
                     Text(AppLanguagePreference.dutch.localizedLabel).tag(AppLanguagePreference.dutch)
                     Text(AppLanguagePreference.english.localizedLabel).tag(AppLanguagePreference.english)
+                    Text(AppLanguagePreference.polish.localizedLabel).tag(AppLanguagePreference.polish)
                 }
             }
 
