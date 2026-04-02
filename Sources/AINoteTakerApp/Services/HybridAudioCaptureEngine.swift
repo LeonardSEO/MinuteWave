@@ -126,7 +126,14 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
     func pause() async {
         stateQueue.sync {
             guard isRunning else { return }
-            isPaused.toggle()
+            isPaused = !isPaused
+        }
+    }
+
+    func resume() async {
+        stateQueue.sync {
+            guard isRunning else { return }
+            isPaused = false
         }
     }
 
@@ -166,7 +173,8 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
             try? await stream.stopCapture()
         }
 
-        streamPair.continuation.finish()
+        let cont = stateQueue.sync { streamPair.continuation }
+        cont.finish()
     }
 
     func audioStream() -> AsyncStream<AudioChunk> {
@@ -327,8 +335,9 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
             }
         }
 
+        let continuation = stateQueue.sync { streamPair.continuation }
         for chunk in chunksToEmit {
-            streamPair.continuation.yield(chunk)
+            continuation.yield(chunk)
         }
     }
 

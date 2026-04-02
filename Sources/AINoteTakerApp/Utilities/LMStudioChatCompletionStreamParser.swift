@@ -41,6 +41,7 @@ enum LMStudioChatCompletionStreamParser {
 
     static func extractText(from data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            AppLogger.network.debug("LM Studio stream: failed to parse JSON chunk")
             return nil
         }
 

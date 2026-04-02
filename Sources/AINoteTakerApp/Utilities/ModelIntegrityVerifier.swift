@@ -151,16 +151,17 @@ struct ModelIntegrityVerifier {
     }
 
     private func safeRepositoryFileURL(rootDirectory: URL, relativePath: String) throws -> URL {
-        guard relativePath.contains("..") == false else {
-            throw AppError.providerUnavailable(reason: "Invalid model path detected while verifying integrity.")
+        guard !relativePath.hasPrefix("/"),
+              !relativePath.contains("\0") else {
+            throw AppError.providerUnavailable(reason: "Model integrity check rejected unsafe file path.")
         }
 
         let root = rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
         let candidate = root.appendingPathComponent(relativePath).standardizedFileURL.resolvingSymlinksInPath()
 
-        if candidate.path == root.path || candidate.path.hasPrefix(root.path + "/") {
-            return candidate
+        guard candidate.path == root.path || candidate.path.hasPrefix(root.path + "/") else {
+            throw AppError.providerUnavailable(reason: "Model integrity check rejected unsafe file path.")
         }
-        throw AppError.providerUnavailable(reason: "Model integrity check rejected unsafe file path.")
+        return candidate
     }
 }

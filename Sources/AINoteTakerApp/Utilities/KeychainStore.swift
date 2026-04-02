@@ -63,7 +63,8 @@ struct KeychainStore {
         ]
 
         let attributes: [String: Any] = [
-            kSecValueData as String: encoded
+            kSecValueData as String: encoded,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
 
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)

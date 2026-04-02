@@ -33,8 +33,12 @@ enum ModelRegistryPolicy {
 
     @discardableResult
     static func applyGlobalPolicy() -> ResolutionResult {
+        #if DEBUG
         let env = ProcessInfo.processInfo.environment
         let candidate = env["REGISTRY_URL"] ?? env["MODEL_REGISTRY_URL"]
+        #else
+        let candidate: String? = nil
+        #endif
         let resolved = resolveTrustedBaseURL(candidate: candidate)
         ModelRegistry.baseURL = resolved.baseURL
         return resolved

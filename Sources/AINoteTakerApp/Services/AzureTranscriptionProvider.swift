@@ -163,28 +163,45 @@ final class AzureTranscriptionProvider: TranscriptionProvider, @unchecked Sendab
         let segments: [Segment]?
     }
 
+    private static func validateAzureDeploymentName(_ name: String) throws {
+        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_."))
+        guard !name.isEmpty, name.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.invalid_deployment_name"))
+        }
+    }
+
+    private static func validateAzureAPIVersion(_ version: String) throws {
+        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-."))
+        guard !version.isEmpty, version.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.invalid_api_version"))
+        }
+    }
+
     private func transcribeChunk(
         wavData: Data,
         config: TranscriptionConfig,
         promptTail: String?
     ) async throws -> ChunkTranscription {
         guard let azure = config.azureConfig else {
-            throw AppError.invalidConfiguration(reason: "Azure config ontbreekt voor transcriptie.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.config_missing_transcription"))
         }
         guard let apiKey = try keychain.get(azure.apiKeyRef), !apiKey.isEmpty else {
-            throw AppError.invalidConfiguration(reason: "Azure API key ontbreekt in Keychain.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.api_key_missing"))
         }
         guard var components = URLComponents(string: azure.endpoint),
               let scheme = components.scheme?.lowercased(),
               scheme == "https",
               components.host?.isEmpty == false else {
-            throw AppError.invalidConfiguration(reason: "Azure endpoint is ongeldig. Gebruik een https endpoint.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.endpoint_invalid"))
         }
+
+        try Self.validateAzureDeploymentName(azure.transcriptionDeployment)
+        try Self.validateAzureAPIVersion(azure.transcriptionAPIVersion)
 
         components.path = "/openai/deployments/\(azure.transcriptionDeployment)/audio/transcriptions"
         components.queryItems = [URLQueryItem(name: "api-version", value: azure.transcriptionAPIVersion)]
         guard let url = components.url else {
-            throw AppError.invalidConfiguration(reason: "Kan Azure transcription URL niet bouwen.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.url_build_failed"))
         }
 
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -215,7 +232,7 @@ final class AzureTranscriptionProvider: TranscriptionProvider, @unchecked Sendab
 
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         switch http.statusCode {
@@ -232,7 +249,8 @@ final class AzureTranscriptionProvider: TranscriptionProvider, @unchecked Sendab
         }
 
         let decoder = JSONDecoder()
-        if let parsed = try? decoder.decode(WhisperVerboseResponse.self, from: data) {
+        do {
+            let parsed = try decoder.decode(WhisperVerboseResponse.self, from: data)
             let text = parsed.text?.trimmingCharacters(in: .whitespacesAndNewlines)
             let segments = (parsed.segments ?? []).compactMap { item -> ChunkTranscription.Segment? in
                 let segmentText = (item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -244,10 +262,11 @@ final class AzureTranscriptionProvider: TranscriptionProvider, @unchecked Sendab
                 )
             }
             return ChunkTranscription(text: text?.isEmpty == true ? nil : text, segments: segments)
+        } catch {
+            AppLogger.network.warning("Azure transcription JSON decode failed: \(error.localizedDescription, privacy: .public)")
+            let fallback = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ChunkTranscription(text: fallback, segments: [])
         }
-
-        let fallback = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ChunkTranscription(text: fallback, segments: [])
     }
 
     private func splitPCMIntoUploadChunks(_ pcmData: Data) -> [Data] {

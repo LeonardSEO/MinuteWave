@@ -61,12 +61,10 @@ struct MainWorkspaceView: View {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.06)
     }
 
-    private var workspaceShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            cornerRadii: RectangleCornerRadii(topLeading: 16, bottomLeading: 16, bottomTrailing: 0, topTrailing: 0),
-            style: .continuous
-        )
-    }
+    private let workspaceShape = UnevenRoundedRectangle(
+        cornerRadii: RectangleCornerRadii(topLeading: 16, bottomLeading: 16, bottomTrailing: 0, topTrailing: 0),
+        style: .continuous
+    )
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -293,6 +291,7 @@ struct MainWorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
+                    .accessibilityLabel(L10n.tr("ui.accessibility.rename_session"))
                 }
 
                 Spacer()
@@ -456,6 +455,7 @@ struct MainWorkspaceView: View {
             }
             .buttonStyle(.plain)
             .disabled(!(viewModel.canStartRecording || viewModel.canStopRecording))
+            .accessibilityLabel(isRecordingLike ? L10n.tr("ui.accessibility.stop_recording") : L10n.tr("ui.accessibility.start_recording"))
         }
     }
 
@@ -605,6 +605,7 @@ struct MainWorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel(L10n.tr("ui.accessibility.send_message"))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)

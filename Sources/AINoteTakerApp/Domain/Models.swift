@@ -486,14 +486,12 @@ Rules:
 
     static var defaultPrompt: SummaryPrompt { defaultPromptAdaptive }
 
-    static var knownDefaultTemplates: Set<String> {
-        [
-            defaultPromptAdaptive.template,
-            legacyDefaultPromptNL,
-            legacyDefaultPromptEN,
-            legacyDefaultPromptAdaptiveV1
-        ]
-    }
+    static let knownDefaultTemplates: Set<String> = [
+        defaultPromptAdaptive.template,
+        legacyDefaultPromptNL,
+        legacyDefaultPromptEN,
+        legacyDefaultPromptAdaptiveV1
+    ]
 
     func normalizedAgainstKnownDefaults() -> SummaryPrompt {
         if template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

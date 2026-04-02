@@ -100,7 +100,7 @@ struct LMStudioRuntimeClient {
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
             session: session,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         guard (200...299).contains(http.statusCode) else {
@@ -267,7 +267,7 @@ struct LMStudioOpenAICompatClient {
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
             session: session,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         switch http.statusCode {

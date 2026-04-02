@@ -51,7 +51,7 @@ struct OpenAIResponsesClient {
 
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         switch http.statusCode {

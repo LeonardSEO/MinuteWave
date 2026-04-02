@@ -118,7 +118,10 @@ final class GitHubUpdateService: ObservableObject {
     }
 
     var fallbackReleasesPageURL: URL {
-        URL(string: "https://github.com/\(owner)/\(repository)/releases")!
+        guard let url = URL(string: "https://github.com/\(owner)/\(repository)/releases") else {
+            return URL(string: "https://github.com")!
+        }
+        return url
     }
 
     func checkForUpdates(userInitiated: Bool = true) async {
@@ -170,7 +173,9 @@ final class GitHubUpdateService: ObservableObject {
     }
 
     private func fetchLatestReleaseInfo() async throws -> LatestReleaseInfo {
-        let endpoint = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest")!
+        guard let endpoint = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest") else {
+            throw UpdateCheckError.invalidResponse
+        }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.timeoutInterval = 15

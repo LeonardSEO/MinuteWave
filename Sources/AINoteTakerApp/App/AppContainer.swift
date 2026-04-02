@@ -1,7 +1,6 @@
 import Foundation
 
-@MainActor
-final class AppContainer {
+final class AppContainer: Sendable {
     let repository: SessionRepository
     let keychain: KeychainStore
     let audioEngine: AudioCaptureEngine
@@ -9,11 +8,12 @@ final class AppContainer {
     let azureProvider: AzureTranscriptionProvider
     let openAIProvider: OpenAITranscriptionProvider
 
-    static let shared: AppContainer = {
+    nonisolated(unsafe) static let shared: AppContainer = {
         do {
             return try AppContainer()
         } catch {
-            fatalError("Failed to initialize app container: \(error.localizedDescription)")
+            AppLogger.security.critical("Failed to initialize app container: \(error.localizedDescription, privacy: .private)")
+            fatalError("Failed to initialize app container. Check Console.app for details.")
         }
     }()
 

@@ -20,8 +20,11 @@ enum OnboardingRequirementsEvaluator {
         switch step {
         case 0, 2:
             return permissionsStepIsSatisfied(snapshot)
-        default:
+        case 1, 3:
             return true
+        default:
+            assertionFailure("Unknown onboarding step \(step)")
+            return false
         }
     }
 

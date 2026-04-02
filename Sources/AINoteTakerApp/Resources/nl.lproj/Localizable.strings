@@ -367,3 +367,14 @@
 "ui.error.hardware.apple_silicon" = "Apple Silicon";
 "ui.error.hardware.intel" = "Intel";
 "ui.error.hardware.minimum_requirements" = "Deze app vereist Apple Silicon en minimaal 16 GB RAM. Huidig: %@ met %d GB.";
+"error.azure.config_missing_transcription" = "Azure-configuratie ontbreekt voor transcriptie.";
+"error.azure.api_key_missing" = "Azure API-sleutel ontbreekt in Keychain.";
+"error.azure.endpoint_invalid" = "Azure-endpoint is ongeldig. Gebruik een https-endpoint.";
+"error.azure.url_build_failed" = "Kan Azure-verzoek-URL niet maken.";
+"error.azure.invalid_deployment_name" = "Ongeldige Azure-deploynaam.";
+"error.azure.invalid_api_version" = "Ongeldige Azure API-versie.";
+"error.azure.endpoint_parse_failed" = "Kan Azure-endpoint niet verwerken.";
+"ui.accessibility.rename_session" = "Sessie hernoemen";
+"ui.accessibility.start_recording" = "Opname starten";
+"ui.accessibility.stop_recording" = "Opname stoppen";
+"ui.accessibility.send_message" = "Bericht versturen";

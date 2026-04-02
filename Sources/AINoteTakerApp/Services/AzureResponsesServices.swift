@@ -21,6 +21,20 @@ struct AzureResponsesClient {
         }
     }
 
+    private static func validateAzureDeploymentName(_ name: String) throws {
+        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_."))
+        guard !name.isEmpty, name.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.invalid_deployment_name"))
+        }
+    }
+
+    private static func validateAzureAPIVersion(_ version: String) throws {
+        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-."))
+        guard !version.isEmpty, version.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.invalid_api_version"))
+        }
+    }
+
     func performChatCompletionCall(
         config: AzureConfig,
         deployment: String,
@@ -31,18 +45,21 @@ struct AzureResponsesClient {
         try validateConfig(config)
 
         guard let apiKey = try keychain.get(config.apiKeyRef), !apiKey.isEmpty else {
-            throw AppError.invalidConfiguration(reason: "Azure API key is missing in Keychain for key '\(config.apiKeyRef)'.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.api_key_missing"))
         }
 
         guard var components = URLComponents(string: config.endpoint) else {
-            throw AppError.invalidConfiguration(reason: "Could not parse Azure endpoint.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.endpoint_parse_failed"))
         }
+
+        try Self.validateAzureDeploymentName(deployment)
+        try Self.validateAzureAPIVersion(config.chatAPIVersion)
 
         components.path = "/openai/deployments/\(deployment)/chat/completions"
         components.queryItems = [URLQueryItem(name: "api-version", value: config.chatAPIVersion)]
 
         guard let url = components.url else {
-            throw AppError.invalidConfiguration(reason: "Could not build Azure Chat Completions URL.")
+            throw AppError.invalidConfiguration(reason: L10n.tr("error.azure.url_build_failed"))
         }
 
         let payload: [String: Any] = [
@@ -62,7 +79,7 @@ struct AzureResponsesClient {
 
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         switch http.statusCode {

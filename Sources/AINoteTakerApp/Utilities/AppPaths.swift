@@ -2,7 +2,9 @@ import Foundation
 
 enum AppPaths {
     static var appSupportDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory unavailable — cannot initialize MinuteWave storage.")
+        }
         return base.appendingPathComponent("MinuteWave", isDirectory: true)
     }
 

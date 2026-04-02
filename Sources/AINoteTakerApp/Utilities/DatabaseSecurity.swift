@@ -160,7 +160,8 @@ struct SQLCipherMigrator {
             if fm.fileExists(atPath: databaseURL.path) == false && fm.fileExists(atPath: backupURL.path) {
                 try? fm.moveItem(at: backupURL, to: databaseURL)
             }
-            throw AppError.storageFailure(reason: "Database migration failed: \(error.localizedDescription)")
+            AppLogger.storage.debug("Migration failed: \(error.localizedDescription, privacy: .private)")
+            throw AppError.storageFailure(reason: "Database migration failed.")
         }
     }
 
@@ -171,7 +172,8 @@ struct SQLCipherMigrator {
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
         guard sqlite3_open_v2(databaseURL.path, &handle, flags, nil) == SQLITE_OK, let handle else {
-            throw AppError.storageFailure(reason: "Unable to open database for migration: \(databaseURL.path)")
+            AppLogger.storage.debug("Unable to open database for migration: \(databaseURL.path, privacy: .private)")
+            throw AppError.storageFailure(reason: "Unable to open database for migration.")
         }
         defer { sqlite3_close(handle) }
 

@@ -85,7 +85,7 @@ final class AppViewModel: ObservableObject {
     private let recordingWorkflow: RecordingWorkflowService
     private let assistantService: SessionAssistantService
 
-    private var exportService: ExportService { ExportService(repository: repository) }
+    private lazy var exportService = ExportService(repository: repository)
 
     private var audioPumpTask: Task<Void, Never>?
     private var partialPumpTask: Task<Void, Never>?
@@ -386,6 +386,18 @@ final class AppViewModel: ObservableObject {
         waveformSmoothedLevel = 0
     }
 
+    private func teardownRecordingState() {
+        recordingTimerTask?.cancel()
+        waveformRenderTask?.cancel()
+        audioPumpTask?.cancel()
+        partialPumpTask?.cancel()
+        recordingStartedAt = nil
+        recordingElapsedLabel = "0:00"
+        liveWaveformSamples = Array(repeating: 0.0, count: 48)
+        waveformTargetLevel = 0
+        waveformSmoothedLevel = 0
+    }
+
     func installLocalModelIfNeeded() async {
         do {
             try await ensureLocalFluidAudioPreparedIfNeeded()
@@ -574,15 +586,7 @@ final class AppViewModel: ObservableObject {
             activeProvider = nil
             await audioEngine.stop()
             await refreshCaptureStatus()
-            audioPumpTask?.cancel()
-            partialPumpTask?.cancel()
-            recordingTimerTask?.cancel()
-            recordingStartedAt = nil
-            recordingElapsedLabel = "0:00"
-            liveWaveformSamples = Array(repeating: 0.0, count: 48)
-            waveformRenderTask?.cancel()
-            waveformTargetLevel = 0
-            waveformSmoothedLevel = 0
+            teardownRecordingState()
             transientError = userFacingErrorMessage(error)
             isLocalTranscriptionHealthy = false
             localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.error")
@@ -594,12 +598,12 @@ final class AppViewModel: ObservableObject {
     func togglePauseRecording() async {
         guard canPauseRecording else { return }
         guard let sessionId = selectedSessionId else { return }
-        if activeSessionStatus == .paused {
-            activeSessionStatus = .recording
-            try? await repository.updateSessionStatus(sessionId: sessionId, status: .recording, endedAt: nil)
-        } else {
-            activeSessionStatus = .paused
-            try? await repository.updateSessionStatus(sessionId: sessionId, status: .paused, endedAt: nil)
+        let newStatus: SessionStatus = activeSessionStatus == .paused ? .recording : .paused
+        activeSessionStatus = newStatus
+        do {
+            try await repository.updateSessionStatus(sessionId: sessionId, status: newStatus, endedAt: nil)
+        } catch {
+            transientError = userFacingErrorMessage(error)
         }
         await audioEngine.pause()
     }
@@ -616,27 +620,13 @@ final class AppViewModel: ObservableObject {
             let provider = activeProvider ?? recordingWorkflow.fallbackProvider(for: settings)
             await audioEngine.stop()
             await refreshCaptureStatus()
-            audioPumpTask?.cancel()
-            partialPumpTask?.cancel()
-            recordingTimerTask?.cancel()
-            recordingStartedAt = nil
-            recordingElapsedLabel = "0:00"
-            liveWaveformSamples = Array(repeating: 0.0, count: 48)
-            waveformRenderTask?.cancel()
-            waveformTargetLevel = 0
-            waveformSmoothedLevel = 0
+            teardownRecordingState()
 
             let stoppedSession = try await recordingWorkflow.stopSession(sessionId: sessionId, provider: provider)
             currentSegments = stoppedSession.transcript.segments
 
             activeSessionStatus = .completed
             activeProvider = nil
-            recordingStartedAt = nil
-            recordingElapsedLabel = "0:00"
-            liveWaveformSamples = Array(repeating: 0.0, count: 48)
-            waveformRenderTask?.cancel()
-            waveformTargetLevel = 0
-            waveformSmoothedLevel = 0
             await refreshSessions()
 
             if settings.autoSummarizeAfterStop {
@@ -650,13 +640,7 @@ final class AppViewModel: ObservableObject {
             try? await repository.updateSessionStatus(sessionId: sessionId, status: .failed, endedAt: Date())
             try? await repository.addAuditEvent(category: "session", message: "Recording failed")
             activeProvider = nil
-            recordingTimerTask?.cancel()
-            recordingStartedAt = nil
-            recordingElapsedLabel = "0:00"
-            liveWaveformSamples = Array(repeating: 0.0, count: 48)
-            waveformRenderTask?.cancel()
-            waveformTargetLevel = 0
-            waveformSmoothedLevel = 0
+            teardownRecordingState()
         }
     }
 
@@ -690,6 +674,9 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        isBusy = true
+        defer { isBusy = false }
+
         do {
             let preparedConversation = try await assistantService.prepareConversation(
                 question: trimmedQuestion,
@@ -698,8 +685,6 @@ final class AppViewModel: ObservableObject {
             )
             try await repository.appendChatMessage(preparedConversation.userMessage)
             appendChatMessageToCurrentSessionIfSelected(preparedConversation.userMessage, sessionId: sessionId)
-            isBusy = true
-            defer { isBusy = false }
 
             try await consumeStreamingAssistantMessage(
                 sessionId: sessionId,
@@ -1358,9 +1343,15 @@ final class AppViewModel: ObservableObject {
             defaults.set(true, forKey: DefaultsKeys.themeDefaultMigrationV2)
         }
 
-        normalized.azureConfig.transcriptionDeployment = AzureModelPolicy.transcriptionDeployment
-        normalized.azureConfig.summaryDeployment = AzureModelPolicy.summaryDeployment
-        normalized.azureConfig.chatDeployment = AzureModelPolicy.chatDeployment
+        if normalized.azureConfig.transcriptionDeployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.azureConfig.transcriptionDeployment = AzureModelPolicy.transcriptionDeployment
+        }
+        if normalized.azureConfig.summaryDeployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.azureConfig.summaryDeployment = AzureModelPolicy.summaryDeployment
+        }
+        if normalized.azureConfig.chatDeployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.azureConfig.chatDeployment = AzureModelPolicy.chatDeployment
+        }
         if normalized.azureConfig.chatAPIVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             normalized.azureConfig.chatAPIVersion = AzureModelPolicy.defaultChatAPIVersion
         }

@@ -7,7 +7,7 @@ enum HTTPRetryPolicy {
         var maxDelaySeconds: Double
     }
 
-    static let azureDefault = Configuration(
+    static let defaultPolicy = Configuration(
         maxAttempts: 5,
         baseDelaySeconds: 0.5,
         maxDelaySeconds: 8
@@ -16,7 +16,7 @@ enum HTTPRetryPolicy {
     static func send(
         request: URLRequest,
         session: URLSession = .shared,
-        configuration: Configuration = HTTPRetryPolicy.azureDefault
+        configuration: Configuration = HTTPRetryPolicy.defaultPolicy
     ) async throws -> (Data, HTTPURLResponse) {
         try await execute(configuration: configuration) {
             try await session.data(for: request)
@@ -24,7 +24,7 @@ enum HTTPRetryPolicy {
     }
 
     static func execute(
-        configuration: Configuration = HTTPRetryPolicy.azureDefault,
+        configuration: Configuration = HTTPRetryPolicy.defaultPolicy,
         operation: @escaping @Sendable () async throws -> (Data, URLResponse)
     ) async throws -> (Data, HTTPURLResponse) {
         let maxAttempts = max(1, configuration.maxAttempts)
@@ -91,7 +91,8 @@ enum HTTPRetryPolicy {
         configuration: Configuration
     ) async throws {
         if let retryAfterSeconds = parseRetryAfterSeconds(retryAfterHeader), retryAfterSeconds > 0 {
-            try await Task.sleep(for: .milliseconds(Int(retryAfterSeconds * 1_000)))
+            let capped = min(retryAfterSeconds, configuration.maxDelaySeconds)
+            try await Task.sleep(for: .milliseconds(Int(capped * 1_000)))
             return
         }
 
