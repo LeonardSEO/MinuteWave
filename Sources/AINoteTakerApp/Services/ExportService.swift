@@ -73,9 +73,13 @@ struct ExportService {
     }
 
     private func sanitize(_ input: String) -> String {
-        input.replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: " ", with: "-")
+        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_ "))
+        let cleaned = input.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : Character("-") }
+            .map(String.init)
+            .joined()
+            .trimmingCharacters(in: .init(charactersIn: "-"))
+        return String(cleaned.prefix(64))
     }
 }
 

@@ -213,7 +213,7 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
 
         let (data, http) = try await HTTPRetryPolicy.send(
             request: request,
-            configuration: HTTPRetryPolicy.azureDefault
+            configuration: HTTPRetryPolicy.defaultPolicy
         )
 
         switch http.statusCode {
@@ -230,7 +230,8 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
         }
 
         let decoder = JSONDecoder()
-        if let parsed = try? decoder.decode(WhisperVerboseResponse.self, from: data) {
+        do {
+            let parsed = try decoder.decode(WhisperVerboseResponse.self, from: data)
             let text = parsed.text?.trimmingCharacters(in: .whitespacesAndNewlines)
             let segments = (parsed.segments ?? []).compactMap { item -> ChunkTranscription.Segment? in
                 let segmentText = (item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -242,10 +243,11 @@ final class OpenAITranscriptionProvider: TranscriptionProvider, @unchecked Senda
                 )
             }
             return ChunkTranscription(text: text?.isEmpty == true ? nil : text, segments: segments)
+        } catch {
+            AppLogger.network.warning("OpenAI transcription JSON decode failed: \(error.localizedDescription, privacy: .public)")
+            let fallback = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ChunkTranscription(text: fallback, segments: [])
         }
-
-        let fallback = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ChunkTranscription(text: fallback, segments: [])
     }
 
     private func transcriptionURL(baseURL: String) -> URL? {

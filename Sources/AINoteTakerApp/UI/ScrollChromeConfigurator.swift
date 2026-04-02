@@ -4,11 +4,19 @@ import AppKit
 struct ScrollChromeConfigurator: NSViewRepresentable {
     var colorScheme: ColorScheme
 
+    final class Coordinator {
+        var lastColorScheme: ColorScheme?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         NSView(frame: .zero)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        guard context.coordinator.lastColorScheme != colorScheme else { return }
+        context.coordinator.lastColorScheme = colorScheme
         DispatchQueue.main.async {
             guard let root = nsView.window?.contentView else { return }
             Self.configureScrollViews(in: root, colorScheme: colorScheme)

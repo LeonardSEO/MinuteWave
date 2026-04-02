@@ -131,4 +131,54 @@ enum AzureEndpointPasteParser {
         }
         return .other
     }
+
+    struct ApplyResult {
+        var feedbackKey: String?
+        var isWarning: Bool
+    }
+
+    static func shouldParse(_ input: String) -> Bool {
+        let lower = input.lowercased()
+        return lower.contains("/openai/deployments/")
+            || lower.contains("api-version=")
+            || input.contains(" ")
+            || input.contains("\n")
+    }
+
+    static func applyToAzureConfig(_ input: String, config: inout AzureConfig) -> ApplyResult {
+        guard shouldParse(input) else {
+            return ApplyResult(feedbackKey: nil, isWarning: false)
+        }
+
+        let result = parse(input)
+        guard result.didParseAny else {
+            return ApplyResult(feedbackKey: "azure.parse.feedback.no_match", isWarning: true)
+        }
+
+        if let endpoint = result.endpoint {
+            config.endpoint = endpoint
+        }
+        if let deployment = result.chatDeployment, !deployment.isEmpty {
+            config.chatDeployment = deployment
+            config.summaryDeployment = deployment
+        }
+        if let deployment = result.transcriptionDeployment, !deployment.isEmpty {
+            config.transcriptionDeployment = deployment
+        }
+        if let version = result.chatAPIVersion, !version.isEmpty {
+            config.chatAPIVersion = version
+        }
+        if let version = result.transcriptionAPIVersion, !version.isEmpty {
+            config.transcriptionAPIVersion = version
+        }
+
+        if result.usedTranslationsRoute {
+            return ApplyResult(feedbackKey: "azure.parse.feedback.success_with_translation_warning", isWarning: true)
+        }
+        if let firstWarning = result.warnings.first {
+            return ApplyResult(feedbackKey: firstWarning, isWarning: true)
+        }
+
+        return ApplyResult(feedbackKey: "azure.parse.feedback.success", isWarning: false)
+    }
 }

@@ -7,9 +7,17 @@ enum AudioConversion {
     static let targetSampleRate: Double = 16_000
     static let targetChannels: AVAudioChannelCount = 1
 
-    static var targetFormat: AVAudioFormat {
-        AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: targetSampleRate, channels: targetChannels, interleaved: false)!
-    }
+    static let targetFormat: AVAudioFormat = {
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: targetSampleRate,
+            channels: targetChannels,
+            interleaved: false
+        ) else {
+            fatalError("AudioConversion: failed to create PCM Int16 16 kHz mono format — check constants")
+        }
+        return format
+    }()
 
     static func pcm16Mono16kData(from inputBuffer: AVAudioPCMBuffer) -> Data? {
         let inputFormat = inputBuffer.format

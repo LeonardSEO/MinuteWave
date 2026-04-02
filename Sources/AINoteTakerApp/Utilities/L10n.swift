@@ -101,16 +101,6 @@ enum L10n {
     }
 
     private static func unresolvedKeyFallback(for key: String, languageCode: String) -> String {
-        let generic: String
-        if languageCode == "nl" {
-            generic = "Vertaling ontbreekt"
-        } else {
-            generic = "Translation unavailable"
-        }
-
-        if key.hasPrefix("ui.") {
-            return generic
-        }
-        return generic
+        languageCode == "nl" ? "Vertaling ontbreekt" : "Translation unavailable"
     }
 }

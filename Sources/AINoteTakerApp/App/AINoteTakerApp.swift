@@ -22,7 +22,6 @@ struct MinuteWaveApp: App {
         _viewModel = StateObject(
             wrappedValue: vm
         )
-        appDelegate.viewModel = vm
     }
 
     var body: some Scene {

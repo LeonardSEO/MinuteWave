@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var viewModel: AppViewModel?
     private var isTerminationFlowInProgress = false

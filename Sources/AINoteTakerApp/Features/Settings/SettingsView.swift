@@ -353,52 +353,8 @@ struct SettingsView: View {
     }
 
     private func parseAndApplyAzureURLsIfNeeded(from input: String) {
-        let lower = input.lowercased()
-        let shouldParse = lower.contains("/openai/deployments/")
-            || lower.contains("api-version=")
-            || input.contains(" ")
-            || input.contains("\n")
-        guard shouldParse else {
-            azureParseFeedbackKey = nil
-            return
-        }
-
-        let result = AzureEndpointPasteParser.parse(input)
-        guard result.didParseAny else {
-            azureParseFeedbackKey = "azure.parse.feedback.no_match"
-            azureParseFeedbackIsWarning = true
-            return
-        }
-
-        if let endpoint = result.endpoint {
-            draft.azureConfig.endpoint = endpoint
-        }
-        if let deployment = result.chatDeployment, !deployment.isEmpty {
-            draft.azureConfig.chatDeployment = deployment
-            draft.azureConfig.summaryDeployment = deployment
-        }
-        if let deployment = result.transcriptionDeployment, !deployment.isEmpty {
-            draft.azureConfig.transcriptionDeployment = deployment
-        }
-        if let version = result.chatAPIVersion, !version.isEmpty {
-            draft.azureConfig.chatAPIVersion = version
-        }
-        if let version = result.transcriptionAPIVersion, !version.isEmpty {
-            draft.azureConfig.transcriptionAPIVersion = version
-        }
-
-        if result.usedTranslationsRoute {
-            azureParseFeedbackKey = "azure.parse.feedback.success_with_translation_warning"
-            azureParseFeedbackIsWarning = true
-            return
-        }
-        if !result.warnings.isEmpty {
-            azureParseFeedbackKey = result.warnings[0]
-            azureParseFeedbackIsWarning = true
-            return
-        }
-
-        azureParseFeedbackKey = "azure.parse.feedback.success"
-        azureParseFeedbackIsWarning = false
+        let applyResult = AzureEndpointPasteParser.applyToAzureConfig(input, config: &draft.azureConfig)
+        azureParseFeedbackKey = applyResult.feedbackKey
+        azureParseFeedbackIsWarning = applyResult.isWarning
     }
 }

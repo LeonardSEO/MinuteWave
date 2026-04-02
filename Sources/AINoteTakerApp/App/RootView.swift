@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
-    @StateObject var viewModel: AppViewModel
+    @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
         Group {

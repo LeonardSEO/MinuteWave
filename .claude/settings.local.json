@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_everything-claude-code_github__list_issues",
+      "mcp__plugin_everything-claude-code_github__list_pull_requests",
+      "Bash(python3 -c ':*)",
+      "Bash(swift build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
+    ]
+  }
+}

@@ -21,7 +21,8 @@ final class SQLiteRepository: SessionRepository, @unchecked Sendable {
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
         if sqlite3_open_v2(databaseURL.path, &handle, flags, nil) != SQLITE_OK || handle == nil {
-            throw AppError.storageFailure(reason: "Unable to open sqlite database at \(databaseURL.path)")
+            AppLogger.storage.debug("Unable to open database: \(databaseURL.path, privacy: .private)")
+            throw AppError.storageFailure(reason: "Unable to open sqlite database.")
         }
         db = handle!
 
@@ -597,13 +598,17 @@ final class SQLiteRepository: SessionRepository, @unchecked Sendable {
     }
 
     private func ensureTranscriptSegmentsSchema() throws {
-        if try columnExists(table: "transcript_segments", column: "speaker_label") == false {
+        if try columnExists(table: .transcriptSegments, column: "speaker_label") == false {
             try execute("ALTER TABLE transcript_segments ADD COLUMN speaker_label TEXT")
         }
     }
 
-    private func columnExists(table: String, column: String) throws -> Bool {
-        let rows = try query("PRAGMA table_info(\(table));")
+    private enum KnownTable: String {
+        case transcriptSegments = "transcript_segments"
+    }
+
+    private func columnExists(table: KnownTable, column: String) throws -> Bool {
+        let rows = try query("PRAGMA table_info(\(table.rawValue));")
         return rows.contains { row in
             (row["name"] as? String)?.lowercased() == column.lowercased()
         }

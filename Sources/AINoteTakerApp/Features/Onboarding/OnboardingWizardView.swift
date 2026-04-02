@@ -417,52 +417,8 @@ struct OnboardingWizardView: View {
     }
 
     private func parseAndApplyAzureURLsIfNeeded(from input: String) {
-        let lower = input.lowercased()
-        let shouldParse = lower.contains("/openai/deployments/")
-            || lower.contains("api-version=")
-            || input.contains(" ")
-            || input.contains("\n")
-        guard shouldParse else {
-            azureParseFeedbackKey = nil
-            return
-        }
-
-        let result = AzureEndpointPasteParser.parse(input)
-        guard result.didParseAny else {
-            azureParseFeedbackKey = "azure.parse.feedback.no_match"
-            azureParseFeedbackIsWarning = true
-            return
-        }
-
-        if let endpoint = result.endpoint {
-            draftSettings.azureConfig.endpoint = endpoint
-        }
-        if let deployment = result.chatDeployment, !deployment.isEmpty {
-            draftSettings.azureConfig.chatDeployment = deployment
-            draftSettings.azureConfig.summaryDeployment = deployment
-        }
-        if let deployment = result.transcriptionDeployment, !deployment.isEmpty {
-            draftSettings.azureConfig.transcriptionDeployment = deployment
-        }
-        if let version = result.chatAPIVersion, !version.isEmpty {
-            draftSettings.azureConfig.chatAPIVersion = version
-        }
-        if let version = result.transcriptionAPIVersion, !version.isEmpty {
-            draftSettings.azureConfig.transcriptionAPIVersion = version
-        }
-
-        if result.usedTranslationsRoute {
-            azureParseFeedbackKey = "azure.parse.feedback.success_with_translation_warning"
-            azureParseFeedbackIsWarning = true
-            return
-        }
-        if !result.warnings.isEmpty {
-            azureParseFeedbackKey = result.warnings[0]
-            azureParseFeedbackIsWarning = true
-            return
-        }
-
-        azureParseFeedbackKey = "azure.parse.feedback.success"
-        azureParseFeedbackIsWarning = false
+        let applyResult = AzureEndpointPasteParser.applyToAzureConfig(input, config: &draftSettings.azureConfig)
+        azureParseFeedbackKey = applyResult.feedbackKey
+        azureParseFeedbackIsWarning = applyResult.isWarning
     }
 }

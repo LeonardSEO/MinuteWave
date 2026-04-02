@@ -414,3 +414,14 @@
 "ui.error.hardware.apple_silicon" = "Apple Silicon";
 "ui.error.hardware.intel" = "Intel";
 "ui.error.hardware.minimum_requirements" = "This app requires Apple Silicon and at least 16 GB RAM. Current: %@ with %d GB.";
+"error.azure.config_missing_transcription" = "Azure configuration is missing for transcription.";
+"error.azure.api_key_missing" = "Azure API key is missing in Keychain.";
+"error.azure.endpoint_invalid" = "Azure endpoint is invalid. Use an https endpoint.";
+"error.azure.url_build_failed" = "Could not build Azure request URL.";
+"error.azure.invalid_deployment_name" = "Invalid Azure deployment name.";
+"error.azure.invalid_api_version" = "Invalid Azure API version.";
+"error.azure.endpoint_parse_failed" = "Could not parse Azure endpoint.";
+"ui.accessibility.rename_session" = "Rename session";
+"ui.accessibility.start_recording" = "Start recording";
+"ui.accessibility.stop_recording" = "Stop recording";
+"ui.accessibility.send_message" = "Send message";
