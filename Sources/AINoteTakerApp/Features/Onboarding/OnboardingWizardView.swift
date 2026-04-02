@@ -39,13 +39,22 @@ struct OnboardingWizardView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(L10n.tr("ui.onboarding.title"))
                     .font(.title.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(L10n.tr("ui.onboarding.step_of_total", step + 1, 3))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
+                HStack(spacing: 6) {
+                    ForEach(0 ..< 3, id: \.self) { i in
+                        Capsule()
+                            .fill(i <= step ? Color.accentColor : Color.white.opacity(0.2))
+                            .frame(height: 4)
+                            .animation(.easeInOut(duration: 0.25), value: step)
+                    }
+                }
+                .frame(maxWidth: 120)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -89,9 +98,9 @@ struct OnboardingWizardView: View {
         .background(
             Group {
                 if colorScheme == .dark {
-                    Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255)
+                    Color(red: 23 / 255, green: 26 / 255, blue: 41 / 255)
                 } else {
-                    Color.white
+                    Color(red: 250 / 255, green: 250 / 255, blue: 254 / 255)
                 }
             }
             .ignoresSafeArea()
@@ -393,7 +402,7 @@ struct OnboardingWizardView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .textFieldStyle(.roundedBorder)
+        .textFieldStyle(OnboardingTextFieldStyle())
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -420,5 +429,15 @@ struct OnboardingWizardView: View {
         let applyResult = AzureEndpointPasteParser.applyToAzureConfig(input, config: &draftSettings.azureConfig)
         azureParseFeedbackKey = applyResult.feedbackKey
         azureParseFeedbackIsWarning = applyResult.isWarning
+    }
+}
+
+private struct OnboardingTextFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
     }
 }

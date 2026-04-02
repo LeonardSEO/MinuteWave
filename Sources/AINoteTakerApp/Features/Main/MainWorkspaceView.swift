@@ -14,9 +14,17 @@ struct MainWorkspaceView: View {
     @State private var isRenamingSession = false
     @State private var renameSessionInput = ""
     @State private var isTranscriptCollapsed = false
+    @State private var selectedTab: WorkspaceTab = .summary
+
+    private enum WorkspaceTab { case summary, chat, transcript }
 
     private var hasTranscript: Bool {
         viewModel.currentSegments.contains(where: { $0.isFinal && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+    }
+
+    private var showTabbedWorkspace: Bool {
+        viewModel.activeSessionStatus == .completed ||
+        (viewModel.activeSessionStatus == .idle && hasTranscript)
     }
 
     private var isRecordingLike: Bool {
@@ -98,16 +106,22 @@ struct MainWorkspaceView: View {
                                 .padding(.vertical, 14)
                         }
 
-                    HStack(spacing: 0) {
-                        contentPanel
-                            .frame(width: contentWidth, alignment: .topLeading)
+                    Group {
+                        if showTabbedWorkspace {
+                            postRecordingWorkspace
+                        } else {
+                            HStack(spacing: 0) {
+                                contentPanel
+                                    .frame(width: contentWidth, alignment: .topLeading)
 
-                        Rectangle()
-                            .fill(workspaceDividerColor)
-                            .frame(width: 1)
+                                Rectangle()
+                                    .fill(workspaceDividerColor)
+                                    .frame(width: 1)
 
-                        detailPanel
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                                detailPanel
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                            }
+                        }
                     }
                     .background {
                         workspaceShape
@@ -146,6 +160,7 @@ struct MainWorkspaceView: View {
         .onChange(of: viewModel.selectedSessionId) { _, _ in
             isRenamingSession = false
             isTranscriptCollapsed = viewModel.settings.transcriptDefaultCollapsed
+            selectedTab = .summary
         }
         .onChange(of: viewModel.settings.transcriptDefaultCollapsed) { _, value in
             isTranscriptCollapsed = value
@@ -264,42 +279,83 @@ struct MainWorkspaceView: View {
 
     private var contentPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                if isRenamingSession, let selected = selectedSession {
-                    NativeTextField(
-                        placeholder: L10n.tr("ui.main.session_name"),
-                        text: $renameSessionInput,
-                        onSubmit: { commitRename(selected.id) }
-                    )
-                    .frame(height: 30)
-
-                    Button(L10n.tr("ui.common.save")) {
-                        commitRename(selected.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                } else {
-                Text(currentSessionName)
-                        .font(.title2.weight(.semibold))
-                        .lineLimit(1)
-
-                    Button {
-                        startRename()
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .accessibilityLabel(L10n.tr("ui.accessibility.rename_session"))
-                }
-
-                Spacer()
-            }
-
+            sessionHeaderRow
             statusStrip
             liveWaveformBar
 
+            switch viewModel.activeSessionStatus {
+            case .recording, .paused:
+                recordingFocusCard
+            default:
+                transcriptSection
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 14)
+    }
+
+    private var sessionHeaderRow: some View {
+        HStack(spacing: 8) {
+            if isRenamingSession, let selected = selectedSession {
+                NativeTextField(
+                    placeholder: L10n.tr("ui.main.session_name"),
+                    text: $renameSessionInput,
+                    onSubmit: { commitRename(selected.id) }
+                )
+                .frame(height: 30)
+
+                Button(L10n.tr("ui.common.save")) {
+                    commitRename(selected.id)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Text(currentSessionName)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+
+                Button {
+                    startRename()
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityLabel(L10n.tr("ui.accessibility.rename_session"))
+            }
+            Spacer()
+        }
+    }
+
+    private var recordingFocusCard: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "waveform")
+                .font(.system(size: 52))
+                .symbolEffect(.variableColor.iterative)
+                .foregroundStyle(Color.accentColor)
+
+            Text(viewModel.recordingElapsedLabel)
+                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                .monospacedDigit()
+
+            Text(captureModeText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(L10n.tr("ui.main.recording_in_progress"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .liquidGlassCard()
+    }
+
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(L10n.tr("ui.main.transcript"))
                     .font(.headline)
@@ -353,10 +409,6 @@ struct MainWorkspaceView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .padding(.bottom, 14)
     }
 
     private var statusStrip: some View {
@@ -733,6 +785,181 @@ private var summaryCard: some View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .liquidGlassCard()
+}
+
+private var postRecordingWorkspace: some View {
+    VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
+            sessionHeaderRow
+            statusStrip
+            liveWaveformBar
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+
+        HStack(spacing: 4) {
+            workspaceTabButton(tab: .summary, icon: "doc.text.fill",
+                               label: L10n.tr("ui.main.tab.summary"))
+            workspaceTabButton(tab: .chat, icon: "message.fill",
+                               label: L10n.tr("ui.main.tab.chat"))
+            Spacer(minLength: 0)
+            if hasTranscript {
+                Button(L10n.tr("ui.main.summarize")) {
+                    Task { await viewModel.generateSummaryIfAvailable() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Menu(L10n.tr("ui.main.export")) {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button(format.rawValue.uppercased()) {
+                            Task { exportedURL = await viewModel.exportSelectedSession(as: format) }
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+            Divider().frame(height: 16).padding(.horizontal, 4)
+            workspaceTabButton(tab: .transcript, icon: "text.alignleft",
+                               label: L10n.tr("ui.main.tab.transcript"),
+                               isSecondary: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+
+        Rectangle().fill(workspaceDividerColor).frame(height: 1)
+
+        switch selectedTab {
+        case .summary:
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    summaryCard
+                    sessionDetailsCard
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
+            }
+        case .chat:
+            VStack(spacing: 0) {
+                if hasTranscript {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(viewModel.currentChatMessages) { message in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(message.role.localizedLabel)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(message.role == .assistant ? .mint : .secondary)
+                                    Text(message.text)
+                                    if !message.citations.isEmpty {
+                                        Text(message.citations.map { "[\($0.startMs)-\($0.endMs)]" }.joined(separator: ", "))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .liquidGlassCard()
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                    }
+
+                    HStack(spacing: 10) {
+                        NativeTextField(
+                            placeholder: L10n.tr("ui.main.chat_placeholder"),
+                            text: $chatInput,
+                            isBorderless: true,
+                            onSubmit: { sendChatPrompt() }
+                        )
+                        .frame(height: 22)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.06), in: Capsule())
+
+                        Button {
+                            sendChatPrompt()
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(Color.blue))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel(L10n.tr("ui.accessibility.send_message"))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+
+                    if let url = exportedURL {
+                        Text(L10n.tr("ui.main.exported_file", url.lastPathComponent))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 8)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.tr("ui.main.chat_export_hint"))
+                            .foregroundStyle(.secondary)
+                        Text(L10n.tr("ui.main.chat_export_tip"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .liquidGlassCard()
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                }
+            }
+        case .transcript:
+            ScrollView {
+                if visibleTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(L10n.tr("ui.main.no_transcript_yet"))
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .liquidGlassCard()
+                } else {
+                    Text(visibleTranscriptText)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .liquidGlassCard()
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 14)
+        }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+}
+
+private func workspaceTabButton(tab: WorkspaceTab, icon: String, label: String, isSecondary: Bool = false) -> some View {
+    let isActive = selectedTab == tab
+    return Button {
+        selectedTab = tab
+    } label: {
+        Label(label, systemImage: icon)
+            .font(isSecondary ? .caption.weight(.medium) : .subheadline.weight(.semibold))
+            .padding(.horizontal, isSecondary ? 8 : 10)
+            .padding(.vertical, isSecondary ? 5 : 7)
+            .background(
+                isActive
+                    ? (isSecondary ? Color.secondary.opacity(0.18) : Color.accentColor.opacity(0.18))
+                    : Color.clear,
+                in: Capsule()
+            )
+            .foregroundStyle(isActive ? (isSecondary ? Color.secondary : Color.accentColor) : Color.secondary)
+    }
+    .buttonStyle(.plain)
 }
 
 private var statusColor: Color {

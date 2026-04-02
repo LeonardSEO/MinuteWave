@@ -12,6 +12,7 @@ enum AppLanguagePreference: String, CaseIterable, Codable, Identifiable {
     case system
     case dutch
     case english
+    case polish
 
     var id: String { rawValue }
 }
