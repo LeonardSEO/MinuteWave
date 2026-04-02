@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MinuteWave — AI Meeting Notes for Mac, Private by Default</title>
+  <meta name="description" content="MinuteWave turns meetings into notes, summaries, and follow-ups. Privacy-first, local-first, open-source macOS app with optional AI providers.">
+  <meta property="og:title" content="MinuteWave — AI Meeting Notes for Mac">
+  <meta property="og:description" content="Record, transcribe, summarize, and chat with your meetings — without giving up control of your data. Free & open-source.">
+  <meta property="og:image" content="https://leonardseo.github.io/MinuteWave/assets/og-image.png">
+  <meta property="og:url" content="https://leonardseo.github.io/MinuteWave/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand:       #7C3AED;
+      --brand-dark:  #5B21B6;
+      --brand-light: #EDE9FE;
+      --brand-mid:   #8B5CF6;
+      --cta:         #7C3AED;
+      --cta-hover:   #5B21B6;
+      --bg:          #FAFAFA;
+      --surface:     #FFFFFF;
+      --border:      #E5E7EB;
+      --text:        #111827;
+      --text-muted:  #6B7280;
+      --text-light:  #9CA3AF;
+      --radius:      14px;
+      --radius-sm:   8px;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --shadow:      0 4px 16px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+      --shadow-lg:   0 20px 60px rgba(0,0,0,.10), 0 4px 16px rgba(0,0,0,.06);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── NAV ─────────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(250,250,250,.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+    }
+    .nav-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.3px;
+    }
+    .nav-logo svg { flex-shrink: 0; }
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13.5px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 150ms, background 150ms;
+    }
+    .btn-ghost:hover { border-color: #D1D5DB; background: #F9FAFB; }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      background: var(--cta);
+      color: #fff;
+      font-size: 13.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: background 150ms, transform 100ms;
+    }
+    .btn-primary:hover { background: var(--cta-hover); }
+    .btn-primary:active { transform: scale(.98); }
+
+    /* ─── HERO ────────────────────────────────────────────── */
+    .hero {
+      padding: 80px 24px 72px;
+      text-align: center;
+    }
+    .hero-icon {
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 28px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 40px rgba(109,40,217,.30), 0 2px 8px rgba(0,0,0,.12);
+    }
+    .hero-tagline {
+      font-family: 'Poppins', sans-serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      max-width: 680px;
+      margin: 0 auto 18px;
+      color: var(--text);
+    }
+    .hero-tagline span { color: var(--brand); }
+    .hero-sub {
+      font-size: clamp(15px, 2.5vw, 17px);
+      color: var(--text-muted);
+      max-width: 520px;
+      margin: 0 auto 32px;
+      line-height: 1.65;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 26px;
+      border-radius: var(--radius-sm);
+      background: var(--cta);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 150ms, transform 100ms, box-shadow 150ms;
+      box-shadow: 0 4px 14px rgba(124,58,237,.35);
+    }
+    .btn-hero:hover { background: var(--cta-hover); box-shadow: 0 6px 20px rgba(91,33,182,.40); }
+    .btn-hero:active { transform: scale(.98); }
+
+    .btn-hero-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: border-color 150ms, background 150ms;
+    }
+    .btn-hero-ghost:hover { border-color: #9CA3AF; background: var(--surface); }
+
+    .hero-meta {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+    .hero-badge svg { color: var(--brand); }
+
+    /* ─── SECTION COMMON ─────────────────────────────────── */
+    section { padding: 72px 24px; }
+    .section-inner { max-width: 900px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--brand);
+      margin-bottom: 12px;
+    }
+    .section-heading {
+      font-family: 'Poppins', sans-serif;
+      font-size: clamp(1.6rem, 4vw, 2.1rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      margin-bottom: 14px;
+      color: var(--text);
+    }
+    .section-sub {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 520px;
+      line-height: 1.65;
+    }
+
+    /* ─── FEATURES GRID ──────────────────────────────────── */
+    #features { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 2px;
+      margin-top: 48px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--border);
+    }
+    .feature-card {
+      background: var(--surface);
+      padding: 28px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--brand-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .feature-icon svg { color: var(--brand); }
+    .feature-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .feature-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ─── HOW IT WORKS ───────────────────────────────────── */
+    #how-it-works { background: var(--bg); }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 24px;
+      margin-top: 48px;
+    }
+    .step-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      position: relative;
+    }
+    .step-number {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--brand);
+      background: var(--brand-light);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .step-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 15.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .step-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ─── PRIVACY ────────────────────────────────────────── */
+    #privacy {
+      background: linear-gradient(135deg, #1E1B4B 0%, #2E1065 100%);
+      color: #fff;
+    }
+    #privacy .section-label { color: #C4B5FD; }
+    #privacy .section-heading { color: #fff; }
+    #privacy .section-sub { color: #C4B5FD; }
+
+    .privacy-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 48px;
+    }
+    @media (max-width: 640px) { .privacy-grid { grid-template-columns: 1fr; } }
+
+    .privacy-card {
+      border-radius: var(--radius);
+      padding: 28px 24px;
+    }
+    .privacy-card-bad {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+    }
+    .privacy-card-good {
+      background: rgba(139,92,246,.20);
+      border: 1px solid rgba(139,92,246,.40);
+    }
+    .privacy-card-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .privacy-card-bad .privacy-card-label { color: #F87171; }
+    .privacy-card-good .privacy-card-label { color: #A78BFA; }
+    .privacy-card-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 14px;
+    }
+    .privacy-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .privacy-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .privacy-card-bad .privacy-list li { color: #D1D5DB; }
+    .privacy-card-good .privacy-list li { color: #E9D5FF; }
+    .privacy-list li svg { flex-shrink: 0; margin-top: 2px; }
+
+    /* ─── PROVIDERS ──────────────────────────────────────── */
+    #providers { background: var(--surface); border-top: 1px solid var(--border); }
+
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 40px;
+    }
+    .provider-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+      background: var(--bg);
+    }
+    .provider-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .provider-desc {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .provider-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: var(--brand-light);
+      color: var(--brand);
+    }
+    .provider-badge-local { background: #DCFCE7; color: #15803D; }
+
+    /* ─── DOWNLOAD CTA ───────────────────────────────────── */
+    #download { background: var(--bg); text-align: center; }
+
+    .download-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 56px 40px;
+      max-width: 580px;
+      margin: 0 auto;
+      box-shadow: var(--shadow);
+    }
+    .download-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      box-shadow: 0 8px 30px rgba(109,40,217,.25);
+    }
+    .download-box h2 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 12px;
+    }
+    .download-box p {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      line-height: 1.65;
+    }
+    .download-meta {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-light);
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .download-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ─── REQUIREMENTS ───────────────────────────────────── */
+    .req-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 24px;
+    }
+    .req-pill {
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+    }
+    .footer-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    .footer-links a {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 150ms;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy {
+      font-size: 12.5px;
+      color: var(--text-light);
+      width: 100%;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .hero { padding: 56px 20px 48px; }
+      section { padding: 56px 20px; }
+      .nav-logo span { display: none; }
+      .features-grid { grid-template-columns: 1fr; border: none; gap: 12px; background: transparent; }
+      .feature-card { border: 1px solid var(--border); border-radius: var(--radius); }
+      .steps { grid-template-columns: 1fr; }
+      .download-box { padding: 40px 24px; }
+      .footer-inner { flex-direction: column; text-align: center; }
+      .footer-links { justify-content: center; }
+    }
+
+    /* ─── SCROLL ANIMATIONS ──────────────────────────────── */
+    @media (prefers-reduced-motion: no-preference) {
+      .fade-in {
+        opacity: 0;
+        transform: translateY(18px);
+        transition: opacity 400ms ease, transform 400ms ease;
+      }
+      .fade-in.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ─── FOCUS ──────────────────────────────────────────── */
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ NAV ═══════════════════════════════════ -->
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="#" aria-label="MinuteWave home">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect width="26" height="26" rx="7" fill="url(#navGrad)"/>
+        <defs>
+          <linearGradient id="navGrad" x1="0" y1="0" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8B5CF6"/>
+            <stop offset="1" stop-color="#6D28D9"/>
+          </linearGradient>
+        </defs>
+        <rect x="11" y="5" width="4" height="10" rx="2" fill="white"/>
+        <path d="M7 11a6 6 0 0 0 12 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <line x1="13" y1="17" x2="13" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="10" y1="20" x2="16" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span>MinuteWave</span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn-ghost" href="https://github.com/LeonardSEO/MinuteWave" target="_blank" rel="noopener" aria-label="View on GitHub">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+        GitHub
+      </a>
+      <a class="btn-primary" href="https://github.com/LeonardSEO/MinuteWave/releases/latest" aria-label="Download MinuteWave">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════ HERO ═══════════════════════════════════ -->
+<header class="hero">
+  <div class="hero-icon" aria-hidden="true">
+    <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+      <rect x="22" y="8" width="8" height="20" rx="4" fill="white"/>
+      <path d="M12 22a14 14 0 0 0 28 0" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <line x1="26" y1="36" x2="26" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
+      <line x1="19" y1="42" x2="33" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="38" cy="14" r="6" fill="#C4B5FD" opacity=".8"/>
+      <path d="M36 14l1.5 1.5L40 12" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <h1 class="hero-tagline">
+    AI meeting notes for Mac,<br><span>private by default</span>
+  </h1>
+  <p class="hero-sub">
+    MinuteWave records your meetings, transcribes audio, generates structured summaries, and lets you chat with your sessions — without sending everything to someone else's cloud.
+  </p>
+
+  <div class="hero-actions">
+    <a class="btn-hero" href="https://github.com/LeonardSEO/MinuteWave/releases/latest" aria-label="Download MinuteWave for macOS">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download for Mac — Free
+    </a>
+    <a class="btn-hero-ghost" href="https://github.com/LeonardSEO/MinuteWave" target="_blank" rel="noopener" aria-label="View MinuteWave source code on GitHub">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
+      </svg>
+      View on GitHub
+    </a>
+  </div>
+
+  <div class="hero-meta">
+    <span class="hero-badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      Free &amp; Open Source
+    </span>
+    <span class="hero-badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      macOS 14+ · Apple Silicon
+    </span>
+    <span class="hero-badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      Local-first · No mandatory cloud
+    </span>
+  </div>
+</header>
+
+<!-- ═════════════════════════════════ FEATURES ════════════════════════════════ -->
+<section id="features">
+  <div class="section-inner">
+    <p class="section-label fade-in">What it does</p>
+    <h2 class="section-heading fade-in">Everything you need after a meeting</h2>
+    <p class="section-sub fade-in">Built on a local-first core with optional cloud AI, MinuteWave turns raw recordings into useful notes and actions.</p>
+
+    <div class="features-grid" role="list">
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">AI Transcription</h3>
+          <p class="feature-desc">Captures mic and system audio with timestamps. Supports Whisper via OpenAI, Azure, or on-device FluidAudio for fully local transcription.</p>
+        </div>
+      </div>
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">Structured Summaries</h3>
+          <p class="feature-desc">Converts long conversations into structured takeaways, action items, key decisions, and follow-ups — automatically generated after each session.</p>
+        </div>
+      </div>
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">Chat with Sessions</h3>
+          <p class="feature-desc">Ask follow-up questions about any past meeting. MinuteWave retrieves relevant transcript segments and provides context-grounded answers.</p>
+        </div>
+      </div>
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">Encrypted Local Storage</h3>
+          <p class="feature-desc">Recordings and transcripts are stored in SQLCipher-encrypted SQLite on your Mac. Secrets live in Keychain — never in logs or defaults.</p>
+        </div>
+      </div>
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">Your AI Provider</h3>
+          <p class="feature-desc">Works with OpenAI, Azure OpenAI, or LM Studio running locally. No vendor lock-in — switch or run fully offline with on-device models.</p>
+        </div>
+      </div>
+
+      <div class="feature-card fade-in" role="listitem">
+        <div class="feature-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="feature-title">100% Open Source</h3>
+          <p class="feature-desc">MIT licensed. Audit every line, fork it, build on it. No tracking, no analytics, no telemetry — just a Mac app that works for you.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ HOW IT WORKS ═══════════════════════════════ -->
+<section id="how-it-works">
+  <div class="section-inner">
+    <p class="section-label fade-in">Workflow</p>
+    <h2 class="section-heading fade-in">From meeting to notes in three steps</h2>
+
+    <div class="steps">
+      <div class="step-card fade-in">
+        <div class="step-number" aria-hidden="true">1</div>
+        <h3 class="step-title">Record your meeting</h3>
+        <p class="step-desc">MinuteWave captures your microphone and optionally system audio. Everything stays on your Mac until you decide otherwise.</p>
+      </div>
+      <div class="step-card fade-in">
+        <div class="step-number" aria-hidden="true">2</div>
+        <h3 class="step-title">Transcribe &amp; summarize</h3>
+        <p class="step-desc">After the session ends, MinuteWave transcribes audio and generates a structured summary with action items, decisions, and key points.</p>
+      </div>
+      <div class="step-card fade-in">
+        <div class="step-number" aria-hidden="true">3</div>
+        <h3 class="step-title">Revisit &amp; export</h3>
+        <p class="step-desc">Search past sessions, chat with any transcript, and export notes as Markdown or text — ready for your notes app, email, or shared docs.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ PRIVACY ═══════════════════════════════════ -->
+<section id="privacy">
+  <div class="section-inner">
+    <p class="section-label fade-in">Privacy</p>
+    <h2 class="section-heading fade-in">Cloud only when you choose it</h2>
+    <p class="section-sub fade-in">Most meeting apps upload everything by default. MinuteWave takes a different approach — local-first with optional cloud when you need more power.</p>
+
+    <div class="privacy-grid">
+      <div class="privacy-card privacy-card-bad fade-in">
+        <p class="privacy-card-label">Typical Meeting Apps</p>
+        <p class="privacy-card-title">Upload-first by design</p>
+        <ul class="privacy-list" aria-label="Problems with typical meeting apps">
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Audio and transcripts stored on vendor servers by default
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Locked to one AI provider you can't change
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Subscription required for basic features
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            No access to raw data or export controls
+          </li>
+        </ul>
+      </div>
+
+      <div class="privacy-card privacy-card-good fade-in">
+        <p class="privacy-card-label">MinuteWave</p>
+        <p class="privacy-card-title">Local-first, opt-in cloud</p>
+        <ul class="privacy-list" aria-label="MinuteWave privacy benefits">
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Recordings and notes stored encrypted on your Mac
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            OpenAI, Azure, or LM Studio — your choice
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Free forever, MIT licensed, no subscription
+          </li>
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Export everything, audit every line of code
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ PROVIDERS ═════════════════════════════════ -->
+<section id="providers">
+  <div class="section-inner">
+    <p class="section-label fade-in">AI Providers</p>
+    <h2 class="section-heading fade-in">Works with the AI you already trust</h2>
+    <p class="section-sub fade-in">Connect your own API keys, run models locally, or start without any cloud provider at all.</p>
+
+    <div class="provider-grid">
+      <div class="provider-card fade-in">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#10A37F"/>
+          <path d="M16 8l5.196 3v6L16 20l-5.196-3V11z" fill="white" fill-opacity=".9"/>
+          <circle cx="16" cy="16" r="3" fill="#10A37F"/>
+        </svg>
+        <p class="provider-name">OpenAI</p>
+        <p class="provider-desc">GPT-4 summaries &amp; Whisper transcription</p>
+        <span class="provider-badge">Cloud</span>
+      </div>
+
+      <div class="provider-card fade-in">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#0078D4"/>
+          <path d="M8 22L15 8l4 8-3 1 4 5H8z" fill="white" fill-opacity=".9"/>
+        </svg>
+        <p class="provider-name">Azure OpenAI</p>
+        <p class="provider-desc">Enterprise-grade models on your Azure deployment</p>
+        <span class="provider-badge">Cloud</span>
+      </div>
+
+      <div class="provider-card fade-in">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#1A1A2E"/>
+          <rect x="9" y="9" width="6" height="14" rx="2" fill="#7C3AED"/>
+          <rect x="17" y="13" width="6" height="10" rx="2" fill="#A78BFA"/>
+        </svg>
+        <p class="provider-name">LM Studio</p>
+        <p class="provider-desc">Run any local model completely offline on your Mac</p>
+        <span class="provider-badge provider-badge-local">100% Local</span>
+      </div>
+
+      <div class="provider-card fade-in">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#F3F4F6"/>
+          <rect x="9" y="10" width="14" height="12" rx="3" fill="#6B7280"/>
+          <rect x="12" y="13" width="8" height="1.5" rx=".75" fill="white"/>
+          <rect x="12" y="16" width="5" height="1.5" rx=".75" fill="white"/>
+        </svg>
+        <p class="provider-name">FluidAudio</p>
+        <p class="provider-desc">On-device transcription with offline diarization</p>
+        <span class="provider-badge provider-badge-local">100% Local</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════ DOWNLOAD ═════════════════════════════════ -->
+<section id="download">
+  <div class="section-inner">
+    <div class="download-box fade-in">
+      <div class="download-icon" aria-hidden="true">
+        <svg width="38" height="38" viewBox="0 0 52 52" fill="none">
+          <rect x="22" y="8" width="8" height="20" rx="4" fill="white"/>
+          <path d="M12 22a14 14 0 0 0 28 0" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <line x1="26" y1="36" x2="26" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
+          <line x1="19" y1="42" x2="33" y2="42" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h2>Download MinuteWave</h2>
+      <p>Free, open-source, and works without any cloud account. Your meetings, your Mac, your data.</p>
+
+      <a class="btn-hero" href="https://github.com/LeonardSEO/MinuteWave/releases/latest" style="font-size:16px; padding:14px 28px;" aria-label="Download the latest MinuteWave release from GitHub">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download .dmg — Free
+      </a>
+
+      <div class="download-meta">
+        <span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          macOS 14 Sonoma or later
+        </span>
+        <span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          Apple Silicon (M1 or later)
+        </span>
+        <span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          No account required
+        </span>
+      </div>
+
+      <div class="req-pills" role="list" aria-label="System requirements">
+        <span class="req-pill" role="listitem">macOS 14+</span>
+        <span class="req-pill" role="listitem">Apple Silicon</span>
+        <span class="req-pill" role="listitem">MIT License</span>
+        <span class="req-pill" role="listitem">No subscription</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ FOOTER ════════════════════════════════════ -->
+<footer>
+  <div class="footer-inner">
+    <a class="footer-logo" href="#" aria-label="MinuteWave">
+      <svg width="20" height="20" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect width="26" height="26" rx="7" fill="url(#footerGrad)"/>
+        <defs>
+          <linearGradient id="footerGrad" x1="0" y1="0" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8B5CF6"/>
+            <stop offset="1" stop-color="#6D28D9"/>
+          </linearGradient>
+        </defs>
+        <rect x="11" y="5" width="4" height="10" rx="2" fill="white"/>
+        <path d="M7 11a6 6 0 0 0 12 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <line x1="13" y1="17" x2="13" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="10" y1="20" x2="16" y2="20" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      MinuteWave
+    </a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="https://github.com/LeonardSEO/MinuteWave" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/LeonardSEO/MinuteWave/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/LeonardSEO/MinuteWave/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://github.com/LeonardSEO/MinuteWave/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </nav>
+    <p class="footer-copy">
+      © 2025 MinuteWave · Free &amp; open-source macOS app · Made with care
+    </p>
+  </div>
+</footer>
+
+<script>
+  // Scroll-triggered fade-in animations (respects prefers-reduced-motion)
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry, i) => {
+        if (entry.isIntersecting) {
+          setTimeout(() => entry.target.classList.add('visible'), i * 40);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+  } else {
+    // If reduced motion: make all elements immediately visible
+    document.querySelectorAll('.fade-in').forEach(el => el.classList.add('visible'));
+  }
+</script>
+</body>
+</html>
