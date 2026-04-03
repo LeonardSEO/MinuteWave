@@ -742,8 +742,8 @@ func appSettingsLegacyLocalRuntimeFieldsDecodable() throws {
       },
       "azureConfig": {
         "endpoint": "",
-        "chatAPIVersion": "2025-01-01-preview",
-        "transcriptionAPIVersion": "2024-06-01",
+        "chatAPIVersion": "2025-04-01-preview",
+        "transcriptionAPIVersion": "2024-10-21",
         "apiKeyRef": "azure-openai-api-key",
         "transcriptionDeployment": "whisper",
         "summaryDeployment": "gpt-4.1",
@@ -790,8 +790,8 @@ func appSettingsCloudProviderLMStudioDecodable() throws {
       },
       "azureConfig": {
         "endpoint": "",
-        "chatAPIVersion": "2025-01-01-preview",
-        "transcriptionAPIVersion": "2024-06-01",
+        "chatAPIVersion": "2025-04-01-preview",
+        "transcriptionAPIVersion": "2024-10-21",
         "apiKeyRef": "azure-openai-api-key",
         "transcriptionDeployment": "whisper",
         "summaryDeployment": "gpt-4.1",
