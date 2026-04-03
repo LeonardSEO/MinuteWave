@@ -12,22 +12,22 @@ let package = Package(
             name: "FluidAudio",
             targets: ["FluidAudio"]
         ),
+        .executable(
+            name: "fluidaudiocli",
+            targets: ["FluidAudioCLI"]
+        ),
     ],
-    dependencies: [
-        .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.1.6")
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "FluidAudio",
             dependencies: [
                 "FastClusterWrapper",
                 "MachTaskSelfWrapper",
-                .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/FluidAudio",
             exclude: [
-                "Frameworks",
-                "TTS",
+                "Frameworks"
             ]
         ),
         .target(
@@ -39,6 +39,23 @@ let package = Package(
             name: "MachTaskSelfWrapper",
             path: "Sources/MachTaskSelfWrapper",
             publicHeadersPath: "include"
+        ),
+        .executableTarget(
+            name: "FluidAudioCLI",
+            dependencies: [
+                "FluidAudio",
+            ],
+            path: "Sources/FluidAudioCLI",
+            exclude: ["README.md"],
+            resources: [
+                .process("Utils/english.json")
+            ]
+        ),
+        .testTarget(
+            name: "FluidAudioTests",
+            dependencies: [
+                "FluidAudio",
+            ]
         ),
     ],
     cxxLanguageStandard: .cxx17
