@@ -1,0 +1,34 @@
+# Documentation Index
+
+- [Models](Models.md) — what each model does, when to use it
+- [API Reference](API.md)
+- [CLI Reference](CLI.md)
+- [Benchmarks](Benchmarks.md)
+
+## ASR
+- [Getting Started](ASR/GettingStarted.md)
+- [Post-Processing (ITN)](ASR/PostProcessing.md)
+- [Custom Vocabulary](ASR/CustomVocabulary.md)
+- [Custom Pronunciation](ASR/CustomPronunciation.md)
+- [Last Chunk Handling](ASR/LastChunkHandling.md)
+- [Manual Model Loading](ASR/ManualModelLoading.md)
+
+## Diarization
+- [Getting Started](Diarization/GettingStarted.md)
+- [LS-EEND](Diarization/LS-EEND.md)
+- [Sortformer](Diarization/Sortformer.md)
+- [Speaker Manager](Diarization/SpeakerManager.md)
+- [DiarizerTimeline](Diarization/DiarizerTimeline.md)
+- [Investigation Report](Diarization/InvestigationReport.md)
+
+## VAD
+- [Getting Started](VAD/GettingStarted.md)
+- [Segmentation](VAD/Segmentation.md)
+
+## TTS
+- [Kokoro](TTS/Kokoro.md)
+- [PocketTTS](TTS/PocketTTS.md)
+- [SSML](TTS/SSML.md)
+
+## Guides
+- [Audio Conversion](Guides/AudioConversion.md)

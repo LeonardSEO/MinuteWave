@@ -742,8 +742,8 @@ func appSettingsLegacyLocalRuntimeFieldsDecodable() throws {
       },
       "azureConfig": {
         "endpoint": "",
-        "chatAPIVersion": "2025-01-01-preview",
-        "transcriptionAPIVersion": "2024-06-01",
+        "chatAPIVersion": "2025-04-01-preview",
+        "transcriptionAPIVersion": "2024-10-21",
         "apiKeyRef": "azure-openai-api-key",
         "transcriptionDeployment": "whisper",
         "summaryDeployment": "gpt-4.1",
@@ -790,8 +790,8 @@ func appSettingsCloudProviderLMStudioDecodable() throws {
       },
       "azureConfig": {
         "endpoint": "",
-        "chatAPIVersion": "2025-01-01-preview",
-        "transcriptionAPIVersion": "2024-06-01",
+        "chatAPIVersion": "2025-04-01-preview",
+        "transcriptionAPIVersion": "2024-10-21",
         "apiKeyRef": "azure-openai-api-key",
         "transcriptionDeployment": "whisper",
         "summaryDeployment": "gpt-4.1",
@@ -1017,16 +1017,16 @@ func appLanguageResolver() {
 
 @Test("Azure endpoint parser fills chat and transcription fields")
 func azureEndpointPasteParserRoundTrip() {
-    let chatURL = "https://demo.cognitiveservices.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2025-01-01-preview"
-    let whisperURL = "https://demo.cognitiveservices.azure.com/openai/deployments/whisper/audio/translations?api-version=2024-06-01"
+    let chatURL = "https://demo.cognitiveservices.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2025-04-01-preview"
+    let whisperURL = "https://demo.cognitiveservices.azure.com/openai/deployments/whisper/audio/translations?api-version=2024-10-21"
     let result = AzureEndpointPasteParser.parse("\(chatURL) \(whisperURL)")
 
     #expect(result.didParseAny == true)
     #expect(result.endpoint == "https://demo.cognitiveservices.azure.com")
     #expect(result.chatDeployment == "gpt-4.1")
     #expect(result.transcriptionDeployment == "whisper")
-    #expect(result.chatAPIVersion == "2025-01-01-preview")
-    #expect(result.transcriptionAPIVersion == "2024-06-01")
+    #expect(result.chatAPIVersion == "2025-04-01-preview")
+    #expect(result.transcriptionAPIVersion == "2024-10-21")
     #expect(result.usedTranslationsRoute == true)
 }
 

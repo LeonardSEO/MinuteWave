@@ -74,8 +74,8 @@ enum AzureModelPolicy {
     static let summaryDeployment = "gpt-4.1"
     static let transcriptionDeployment = "whisper"
     static let transcriptionModel = "whisper-1"
-    static let defaultChatAPIVersion = "2025-01-01-preview"
-    static let defaultTranscriptionAPIVersion = "2024-06-01"
+    static let defaultChatAPIVersion = "2025-04-01-preview"
+    static let defaultTranscriptionAPIVersion = "2024-10-21"
 }
 
 struct AzureConfig: Codable, Equatable {
