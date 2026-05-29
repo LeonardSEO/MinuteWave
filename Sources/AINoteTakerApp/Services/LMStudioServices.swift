@@ -113,10 +113,7 @@ struct LMStudioRuntimeClient {
     }
 
     func modelsEndpointURL(baseURL: String) -> URL? {
-        guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = components.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
-              components.host?.isEmpty == false else {
+        guard var components = LMStudioEndpointPolicy.normalizedLoopbackComponents(baseURL) else {
             return nil
         }
 
@@ -233,10 +230,7 @@ struct LMStudioOpenAICompatClient {
         }
 
         let trimmed = config.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed),
-              let scheme = components.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
-              components.host?.isEmpty == false else {
+        guard LMStudioEndpointPolicy.validateLoopbackBaseURL(trimmed) else {
             throw AppError.invalidConfiguration(reason: L10n.tr("error.lmstudio.endpoint_invalid"))
         }
     }
@@ -384,7 +378,7 @@ struct LMStudioOpenAICompatClient {
     }
 
     func chatCompletionURL(baseURL: String) -> URL? {
-        guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        guard var components = LMStudioEndpointPolicy.normalizedLoopbackComponents(baseURL) else {
             return nil
         }
 

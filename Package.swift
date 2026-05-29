@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "MinuteWave", targets: ["AINoteTakerApp"])
     ],
     dependencies: [
-        // Vendored until the upstream strict-concurrency fix is available in a tagged release.
+        // Vendored to keep the FluidAudio tag audited with the app release.
         .package(path: "Vendor/FluidAudio")
     ],
     targets: [

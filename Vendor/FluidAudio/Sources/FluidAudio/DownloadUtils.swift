@@ -1,6 +1,5 @@
 import CoreML
 import Foundation
-import OSLog
 
 /// HuggingFace model downloader using URLSession
 public class DownloadUtils {
@@ -74,8 +73,6 @@ public class DownloadUtils {
         }
     }
 
-    /// Download configuration
-
     /// Phase of a model download operation.
     public enum DownloadPhase: Sendable {
         /// Listing files from the remote repository.
@@ -133,7 +130,22 @@ public class DownloadUtils {
             logger.warning("First load failed: \(error.localizedDescription)")
             logger.info("Deleting cache and re-downloading…")
             let repoPath = directory.appendingPathComponent(repo.folderName)
-            try? FileManager.default.removeItem(at: repoPath)
+
+            // Try to delete the corrupted cache
+            do {
+                try FileManager.default.removeItem(at: repoPath)
+                logger.info("Successfully deleted corrupted cache at \(repoPath.path)")
+            } catch {
+                // If deletion fails (excluding "file not found"), log the error but continue
+                // Robust directory creation will handle any remaining files
+                let nsError = error as NSError
+                if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError {
+                    // File already doesn't exist - this is fine
+                } else {
+                    logger.warning("Failed to delete cache: \(error.localizedDescription)")
+                    logger.info("Will attempt to overwrite during re-download")
+                }
+            }
 
             return try await loadModelsOnce(
                 repo, modelNames: modelNames,
@@ -381,11 +393,9 @@ public class DownloadUtils {
                 continue
             }
 
-            // Create parent directory
-            try FileManager.default.createDirectory(
-                at: destPath.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
+            // Create parent directory, removing any conflicting files in the path
+            let parentDir = destPath.deletingLastPathComponent()
+            try createDirectoryRobustly(at: parentDir)
 
             // HuggingFace returns 500 for 0-byte files — create empty file locally
             if file.size == 0 {
@@ -475,6 +485,47 @@ public class DownloadUtils {
         logger.info("Downloaded all required models for \(repo.folderName)")
     }
 
+    // MARK: - Helper Functions
+
+    /// Robustly create a directory, removing any conflicting files in the path.
+    ///
+    /// This handles cases where a file exists where a directory should be, which can happen
+    /// during corrupted cache recovery when partial deletion leaves files in place of directories.
+    ///
+    /// - Parameter url: The directory path to create
+    /// - Throws: Errors from FileManager if directory creation fails after cleanup
+    private static func createDirectoryRobustly(at url: URL) throws {
+        let fm = FileManager.default
+        var pathComponents = url.pathComponents
+
+        // Remove leading "/" if present
+        if pathComponents.first == "/" {
+            pathComponents.removeFirst()
+        }
+
+        // Build path incrementally, checking each component
+        var currentPath = "/"
+        for component in pathComponents {
+            currentPath = (currentPath as NSString).appendingPathComponent(component)
+            let componentURL = URL(fileURLWithPath: currentPath)
+
+            var isDirectory: ObjCBool = false
+            if fm.fileExists(atPath: currentPath, isDirectory: &isDirectory) {
+                if !isDirectory.boolValue {
+                    // A file exists where a directory should be - remove it
+                    logger.warning("Removing file blocking directory creation: \(currentPath)")
+                    try fm.removeItem(at: componentURL)
+                    try fm.createDirectory(at: componentURL, withIntermediateDirectories: false)
+                }
+                // If it's already a directory, continue
+            } else {
+                // Path doesn't exist, create remaining path with intermediate directories
+                try fm.createDirectory(at: url, withIntermediateDirectories: true)
+                return
+            }
+        }
+    }
+
     // MARK: - Delegate-based download with per-byte progress
 
     /// Download a single file using a delegate to get byte-level progress.
@@ -518,11 +569,19 @@ public class DownloadUtils {
     ///   - subdirectory: Path within the repo to download (e.g. `"mimi_encoder.mlmodelc"`).
     ///   - repoDirectory: Local directory corresponding to the repo root.
     ///     Files are saved at `repoDirectory/<remote_path>`.
+    ///   - shouldSkip: Optional predicate evaluated on each remote path
+    ///     (both files and directories). Returning `true` excludes the file
+    ///     or, for directories, skips the whole subtree without recursing.
+    ///     Used to avoid pulling redundant artifacts (e.g. `.mlpackage`
+    ///     sources next to compiled `.mlmodelc`).
     public static func downloadSubdirectory(
         _ repo: Repo,
         subdirectory: String,
-        to repoDirectory: URL
+        to repoDirectory: URL,
+        progressHandler: ProgressHandler? = nil,
+        shouldSkip: (@Sendable (String) -> Bool)? = nil
     ) async throws {
+        progressHandler?(DownloadProgress(fractionCompleted: 0.0, phase: .listing))
         var filesToDownload: [(path: String, size: Int)] = []
 
         func listFiles(at path: String) async throws {
@@ -547,6 +606,10 @@ public class DownloadUtils {
                     let itemType = item["type"] as? String
                 else { continue }
 
+                if shouldSkip?(itemPath) == true {
+                    continue
+                }
+
                 if itemType == "directory" {
                     try await listFiles(at: itemPath)
                 } else if itemType == "file" {
@@ -557,12 +620,22 @@ public class DownloadUtils {
         }
 
         try await listFiles(at: subdirectory)
-        logger.info("Found \(filesToDownload.count) files in \(subdirectory)")
+        let totalFiles = filesToDownload.count
+        logger.info("Found \(totalFiles) files in \(subdirectory)")
+        progressHandler?(
+            DownloadProgress(
+                fractionCompleted: totalFiles == 0 ? 1.0 : 0.0,
+                phase: .downloading(completedFiles: 0, totalFiles: totalFiles)))
 
         for (index, file) in filesToDownload.enumerated() {
             let destPath = repoDirectory.appendingPathComponent(file.path)
 
             if FileManager.default.fileExists(atPath: destPath.path) {
+                progressHandler?(
+                    DownloadProgress(
+                        fractionCompleted: Double(index + 1) / Double(totalFiles),
+                        phase: .downloading(
+                            completedFiles: index + 1, totalFiles: totalFiles)))
                 continue
             }
 
@@ -573,6 +646,14 @@ public class DownloadUtils {
 
             if file.size == 0 {
                 FileManager.default.createFile(atPath: destPath.path, contents: Data())
+                progressHandler?(
+                    DownloadProgress(
+                        fractionCompleted: Double(index + 1) / Double(totalFiles),
+                        phase: .downloading(
+                            completedFiles: index + 1, totalFiles: totalFiles)))
+                if (index + 1) % 5 == 0 || index == totalFiles - 1 {
+                    logger.info("Downloaded \(index + 1)/\(totalFiles) \(subdirectory) files")
+                }
                 continue
             }
 
@@ -604,8 +685,14 @@ public class DownloadUtils {
             }
             try FileManager.default.moveItem(at: tempURL, to: destPath)
 
-            if (index + 1) % 5 == 0 || index == filesToDownload.count - 1 {
-                logger.info("Downloaded \(index + 1)/\(filesToDownload.count) \(subdirectory) files")
+            progressHandler?(
+                DownloadProgress(
+                    fractionCompleted: Double(index + 1) / Double(totalFiles),
+                    phase: .downloading(
+                        completedFiles: index + 1, totalFiles: totalFiles)))
+
+            if (index + 1) % 5 == 0 || index == totalFiles - 1 {
+                logger.info("Downloaded \(index + 1)/\(totalFiles) \(subdirectory) files")
             }
         }
 

@@ -53,9 +53,6 @@ enum Permissions {
         if preflightGranted {
             return .granted
         }
-        if lastKnownState == .granted {
-            return .granted
-        }
         if lastKnownState == .denied {
             return .denied
         }

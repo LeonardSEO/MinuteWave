@@ -11,6 +11,9 @@ public enum ASRConstants {
     /// Maximum audio samples supported by CoreML encoder (sampleRate × maxDurationSeconds)
     public static let maxModelSamples: Int = 240_000
 
+    /// Minimum audio duration accepted by the ASR guard (seconds).
+    public static let minimumAudioDurationSeconds: Double = 0.3
+
     /// Mel-spectrogram hop size in samples (10ms at 16kHz)
     public static let melHopSize: Int = 160
 
@@ -33,10 +36,29 @@ public enum ASRConstants {
     /// WER threshold for detailed error analysis in benchmarks
     public static let highWERThreshold: Double = 0.15
 
+    /// Punctuation token IDs (period, question mark, exclamation mark)
+    public static let punctuationTokens: [Int] = [7883, 7952, 7948]
+
+    /// Standard overlap in encoder frames (2.0s = 25 frames at 0.08s per frame)
+    public static let standardOverlapFrames: Int = 25
+
+    /// Minimum confidence score (for empty or very uncertain transcriptions)
+    public static let minConfidence: Float = 0.1
+
+    /// Maximum confidence score (perfect confidence)
+    public static let maxConfidence: Float = 1.0
+
     /// Calculate encoder frames from audio samples using proper ceiling division
     /// - Parameter samples: Number of audio samples
     /// - Returns: Number of encoder frames
     public static func calculateEncoderFrames(from samples: Int) -> Int {
         return Int(ceil(Double(samples) / Double(samplesPerEncoderFrame)))
+    }
+
+    /// Minimum number of samples required by the ASR guard for a given sample rate.
+    /// - Parameter sampleRate: Audio sample rate in Hz
+    /// - Returns: Sample count corresponding to `minimumAudioDurationSeconds`
+    public static func minimumRequiredSamples(forSampleRate sampleRate: Int) -> Int {
+        return Int(Double(sampleRate) * minimumAudioDurationSeconds)
     }
 }

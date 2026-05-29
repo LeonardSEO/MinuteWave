@@ -5,7 +5,17 @@ import FluidAudio
 
 /// Dataset downloading functionality for AMI and VAD datasets
 struct DatasetDownloader {
-    private static let logger = AppLogger(category: "Dataset")
+    internal static let logger = AppLogger(category: "Dataset")
+
+    /// Official AMI SDM 16-meeting test set (EN2002a-d, ES2004a-d, IS1009a-d, TS3003a-d).
+    /// Matches the evaluation convention used by NeMo, pyannote, and Sortformer papers.
+    /// Single source of truth for both dataset download and benchmark enumeration.
+    static let officialAMITestSet: [String] = [
+        "EN2002a", "EN2002b", "EN2002c", "EN2002d",
+        "ES2004a", "ES2004b", "ES2004c", "ES2004d",
+        "IS1009a", "IS1009b", "IS1009c", "IS1009d",
+        "TS3003a", "TS3003b", "TS3003c", "TS3003d",
+    ]
 
     enum AMIVariant: String, CaseIterable {
         case sdm = "sdm"  // Single Distant Microphone (Mix-Headset.wav)
@@ -27,7 +37,7 @@ struct DatasetDownloader {
     }
 
     static func downloadAMIDataset(
-        variant: AMIVariant, force: Bool, singleFile: String? = nil
+        variant: AMIVariant, force: Bool, singleFile: String? = nil, meetingIds: [String]? = nil
     )
         async
     {
@@ -49,19 +59,16 @@ struct DatasetDownloader {
 
         // Download AMI annotations first (required for proper benchmarking)
         await downloadAMIAnnotations(force: force)
+        await downloadAMIRTTMs(force: force, singleFile: singleFile, meetingIds: meetingIds)
 
         // Official AMI SDM test set (16 meetings) - matches NeMo evaluation
         let commonMeetings: [String]
         if let singleFile = singleFile {
             commonMeetings = [singleFile]
+        } else if let meetingIds {
+            commonMeetings = meetingIds
         } else {
-            commonMeetings = [
-                // Full 16-meeting AMI SDM test set
-                "EN2002a", "EN2002b", "EN2002c", "EN2002d",
-                "ES2004a", "ES2004b", "ES2004c", "ES2004d",
-                "IS1009a", "IS1009b", "IS1009c", "IS1009d",
-                "TS3003a", "TS3003b", "TS3003c", "TS3003d",
-            ]
+            commonMeetings = Self.officialAMITestSet
             logger.info("📋 Downloading official AMI SDM test set (16 meetings)")
         }
 
@@ -253,6 +260,106 @@ struct DatasetDownloader {
         }
 
         return false
+    }
+
+    /// Sync AMI forced-alignment RTTMs from the local diar-forced-alignment repo into the standard cache path.
+    static func downloadAMIRTTMs(
+        force: Bool = false,
+        singleFile: String? = nil,
+        meetingIds: [String]? = nil
+    ) async {
+        let fileManager = FileManager.default
+        let homeDir = fileManager.homeDirectoryForCurrentUser
+        let workingDir = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+        let sourceRoot = workingDir.appendingPathComponent("Datasets/diar-forced-alignment/AMI")
+        let destinationDir = homeDir.appendingPathComponent("FluidAudioDatasets/ami_official/rttm")
+        await downloadAMIRTTMs(
+            force: force,
+            singleFile: singleFile,
+            meetingIds: meetingIds,
+            sourceRoot: sourceRoot,
+            destinationDir: destinationDir,
+            fileManager: fileManager
+        )
+    }
+
+    static func downloadAMIRTTMs(
+        force: Bool = false,
+        singleFile: String? = nil,
+        meetingIds: [String]? = nil,
+        sourceRoot: URL,
+        destinationDir: URL,
+        fileManager: FileManager = .default
+    ) async {
+        guard fileManager.fileExists(atPath: sourceRoot.path) else {
+            logger.warning("AMI forced-alignment RTTM repo not found at \(sourceRoot.path)")
+            return
+        }
+
+        do {
+            try fileManager.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        } catch {
+            logger.error("Failed to create AMI RTTM directory: \(error)")
+            return
+        }
+
+        let selectedMeetingIds: [String]
+        if let singleFile {
+            selectedMeetingIds = [singleFile]
+        } else if let meetingIds {
+            selectedMeetingIds = meetingIds
+        } else {
+            selectedMeetingIds = [
+                "EN2002a", "EN2002b", "EN2002c", "EN2002d",
+                "ES2004a", "ES2004b", "ES2004c", "ES2004d",
+                "IS1009a", "IS1009b", "IS1009c", "IS1009d",
+                "TS3003a", "TS3003b", "TS3003c", "TS3003d",
+            ]
+        }
+
+        var copiedFiles = 0
+        var skippedFiles = 0
+        var missingFiles: [String] = []
+
+        for meetingId in selectedMeetingIds {
+            let destinationURL = destinationDir.appendingPathComponent("\(meetingId).rttm")
+            if !force && fileManager.fileExists(atPath: destinationURL.path) {
+                skippedFiles += 1
+                continue
+            }
+
+            guard let sourceURL = findAMIRTTMSource(meetingId: meetingId, sourceRoot: sourceRoot) else {
+                missingFiles.append(meetingId)
+                continue
+            }
+
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try? fileManager.removeItem(at: destinationURL)
+            }
+
+            do {
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                copiedFiles += 1
+            } catch {
+                logger.error("Failed to copy RTTM for \(meetingId): \(error)")
+            }
+        }
+
+        logger.info("AMI RTTMs: \(copiedFiles) copied, \(skippedFiles) skipped")
+        if !missingFiles.isEmpty {
+            logger.warning("Missing AMI RTTMs for: \(missingFiles.sorted().joined(separator: ", "))")
+        }
+    }
+
+    private static func findAMIRTTMSource(meetingId: String, sourceRoot: URL) -> URL? {
+        let fileManager = FileManager.default
+        let candidateURLs = [
+            sourceRoot.appendingPathComponent("test/\(meetingId).rttm"),
+            sourceRoot.appendingPathComponent("dev/\(meetingId).rttm"),
+            sourceRoot.appendingPathComponent("train/\(meetingId).rttm"),
+        ]
+
+        return candidateURLs.first { fileManager.fileExists(atPath: $0.path) }
     }
 
     /// Extract ZIP file using system unzip command
@@ -693,8 +800,9 @@ struct DatasetDownloader {
         let type: String
     }
 
-    /// Download Earnings22 KWS dataset from argmaxinc/earnings22-kws-golden
+    /// Download Earnings22 KWS dataset from argmaxinc/contextual-earnings22
     /// using the HuggingFace Datasets Server REST API (pure Swift, no Python dependency).
+    /// (Previously argmaxinc/earnings22-kws-golden, which was consolidated into contextual-earnings22.)
     static func downloadEarnings22KWS(force: Bool) async {
         let cacheDir = getEarnings22Directory()
         let testDatasetDir = cacheDir.appendingPathComponent("test-dataset")
@@ -725,7 +833,7 @@ struct DatasetDownloader {
 
         // Fetch rows via HuggingFace Datasets Server API (paginated, max 100 per request)
         let baseURL = "https://datasets-server.huggingface.co/rows"
-        let dataset = "argmaxinc/earnings22-kws-golden"
+        let dataset = "argmaxinc/contextual-earnings22"
         let pageSize = 100
         var offset = 0
         var totalExtracted = 0

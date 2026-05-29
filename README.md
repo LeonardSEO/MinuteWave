@@ -154,9 +154,16 @@ swift run MinuteWave
 For reliable macOS permission prompts, run as a real app bundle:
 
 ```bash
-./scripts/build_dev_app_bundle.sh debug
-open ".build/AppBundle/MinuteWave.app"
+SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" \
+ENABLE_HARDENED_RUNTIME=1 \
+./scripts/build_dev_app_bundle.sh release
+./scripts/install_app_bundle.sh
+open "/Applications/MinuteWave.app"
 ```
+
+Use the installed app for Screen & System Audio Recording tests. Running an older
+or ad-hoc signed `MinuteWave.app` from `/Applications` can leave macOS TCC grants
+attached to the wrong code-signing identity.
 
 ### Build DMG
 
@@ -164,11 +171,31 @@ open ".build/AppBundle/MinuteWave.app"
 ./scripts/build_dmg.sh release
 ```
 
+Check the generated bundle and DMG before handing artifacts to testers:
+
+```bash
+./scripts/release_doctor.sh
+```
+
 Optional signing:
 
 ```bash
 security find-identity -v -p codesigning
-SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build_dev_app_bundle.sh release
+SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ENABLE_HARDENED_RUNTIME=1 ./scripts/build_dev_app_bundle.sh release
+```
+
+Release builds use `config/MinuteWave.entitlements` by default. For Developer ID or App Store distribution, use the appropriate Apple signing identity and validate the resulting archive in Xcode/App Store Connect before shipping.
+
+Optional notarization for direct-download DMGs:
+
+```bash
+SIGNING_IDENTITY="Developer ID Application: Your Company (TEAMID)" \
+ENABLE_HARDENED_RUNTIME=1 \
+NOTARIZE_DMG=1 \
+APPLE_NOTARY_APPLE_ID="apple-id@example.com" \
+APPLE_NOTARY_TEAM_ID="TEAMID" \
+APPLE_NOTARY_PASSWORD="@keychain:AC_PASSWORD" \
+./scripts/build_dmg.sh release
 ```
 
 ## Release and CI
@@ -176,6 +203,7 @@ SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build_dev_app
 - Release workflow: `.github/workflows/release.yml`
 - Tag format: `vMAJOR.MINOR.PATCH`
 - Release artifacts: `MinuteWave-macOS.dmg`, `MinuteWave-macOS.dmg.sha256`
+- Release checklist: [`docs/TestFlightReleaseChecklist.md`](docs/TestFlightReleaseChecklist.md)
 
 ## Troubleshooting
 

@@ -334,7 +334,7 @@ final class SpeakerOperationsTests: XCTestCase {
     // MARK: - Merge Speakers Tests
 
     func testMergeSpeakers() {
-        let speaker1 = Speaker(
+        var speaker1 = Speaker(
             id: "speaker1",
             name: "Alice",
             currentEmbedding: createDistinctEmbedding(pattern: 1),
@@ -343,7 +343,7 @@ final class SpeakerOperationsTests: XCTestCase {
         speaker1.updateCount = 5
         speaker1.addRawEmbedding(RawEmbedding(embedding: createDistinctEmbedding(pattern: 3)))
 
-        let speaker2 = Speaker(
+        var speaker2 = Speaker(
             id: "speaker2",
             name: "Bob",
             currentEmbedding: createDistinctEmbedding(pattern: 2),
@@ -365,8 +365,8 @@ final class SpeakerOperationsTests: XCTestCase {
     }
 
     func testMergeSpeakersWithMaxCapacity() {
-        let speaker1 = Speaker(id: "speaker1", name: "Alice", currentEmbedding: createDistinctEmbedding(pattern: 1))
-        let speaker2 = Speaker(id: "speaker2", name: "Bob", currentEmbedding: createDistinctEmbedding(pattern: 2))
+        var speaker1 = Speaker(id: "speaker1", name: "Alice", currentEmbedding: createDistinctEmbedding(pattern: 1))
+        var speaker2 = Speaker(id: "speaker2", name: "Bob", currentEmbedding: createDistinctEmbedding(pattern: 2))
 
         // Add many raw embeddings
         for i in 0..<30 {
@@ -433,8 +433,8 @@ final class SpeakerOperationsTests: XCTestCase {
 
     // MARK: - SpeakerManager Extension Tests
 
-    func testReassignSegment() {
-        let manager = SpeakerManager()
+    func testReassignSegment() async {
+        var manager = SpeakerManager()
 
         // Create initial speakers
         let emb1 = createDistinctEmbedding(pattern: 1)
@@ -447,15 +447,16 @@ final class SpeakerOperationsTests: XCTestCase {
         XCTAssertNotNil(speaker2)
 
         // Test that both speakers were created
-        XCTAssertEqual(manager.speakerCount, 2)
+        let speakerCount = manager.speakerCount
+        XCTAssertEqual(speakerCount, 2)
 
         // Test reassigning an embedding that's closer to speaker2
         let reassignedSpeaker = manager.assignSpeaker(emb2, speechDuration: 3.0)
         XCTAssertEqual(reassignedSpeaker?.id, speaker2?.id)
     }
 
-    func testGetCurrentSpeakerNames() {
-        let manager = SpeakerManager()
+    func testGetCurrentSpeakerNames() async {
+        var manager = SpeakerManager()
 
         // Add speakers with names
         let alice = Speaker(id: "alice", name: "Alice", currentEmbedding: createDistinctEmbedding(pattern: 1))
@@ -471,8 +472,8 @@ final class SpeakerOperationsTests: XCTestCase {
         XCTAssertTrue(speakerIds.contains("bob"))
     }
 
-    func testGetGlobalSpeakerStats() {
-        let manager = SpeakerManager(speakerThreshold: 0.5)  // Use higher threshold to ensure distinct speakers
+    func testGetGlobalSpeakerStats() async {
+        var manager = SpeakerManager(speakerThreshold: 0.5)  // Use higher threshold to ensure distinct speakers
 
         // Add speakers with very different embeddings to ensure they're distinct
         let speaker1 = manager.assignSpeaker(createDistinctEmbedding(pattern: 1), speechDuration: 10.0)

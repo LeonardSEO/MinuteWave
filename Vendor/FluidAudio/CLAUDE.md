@@ -50,9 +50,24 @@ FluidAudio is a Swift framework for local, low-latency audio processing on Apple
 3. **Git Operations**: Never run `git push` unless explicitly requested.
    - **No Co-Author Tags**: Do not add `Co-Authored-By` lines for Claude, Copilot, or any AI assistant in commit messages.
    - **No GitHub comments**: Never post comments, reviews, or reactions on issues or PRs via `gh`. Reading issues, PRs, and comments is fine. Creating PRs and editing PR titles/bodies is fine.
-4. **Code Formatting**: All code must pass swift-format checks before merge
-5. **Avoid Deprecated Code**: Do not add support for deprecated models or features unless explicitly requested
-6. **Performance**: Keep RTFx > 1.0x for real-time capability
+4. **Multi-Agent Workflow**: This repo is worked on by multiple coding agents
+   in parallel. Switching branches in a shared working tree drags unrelated
+   WIP changes (and their build artifacts) into your compile and surfaces
+   "file was modified during the build" errors. Use `git worktree` instead
+   — shared `.git`, isolated working tree + `.build/`, no collisions.
+
+   ```bash
+   # From the primary checkout, create an isolated tree for your branch
+   git worktree add ../FluidAudio-<task> -b <branch> origin/main
+   cd ../FluidAudio-<task>
+   # Independent working tree, independent .build/, shared .git
+   ```
+
+   One worktree per active task. Remove with `git worktree remove <path>` when
+   done. List active worktrees with `git worktree list`.
+5. **Code Formatting**: All code must pass swift-format checks before merge
+6. **Avoid Deprecated Code**: Do not add support for deprecated models or features unless explicitly requested
+7. **Performance**: Keep RTFx > 1.0x for real-time capability
 
 ## Code Style
 
@@ -131,7 +146,7 @@ FluidAudio/
 │   │   │   ├── Parakeet/    # Parakeet TDT (Decoder/, SlidingWindow/, Streaming/)
 │   │   │   └── Qwen3/       # Qwen3 ASR
 │   │   ├── Diarizer/        # Speaker diarization (segmentation, embedding, clustering)
-│   │   ├── TTS/             # Text-to-speech (Kokoro, PocketTTS)
+│   │   ├── TTS/             # Text-to-speech (KokoroAne, PocketTTS, StyleTTS2, Magpie)
 │   │   ├── VAD/             # Voice Activity Detection (Silero VAD)
 │   │   └── Shared/          # Common utilities (audio conversion, model downloading)
 │   └── FluidAudioCLI/       # Command-line interface (macOS only)
@@ -148,12 +163,14 @@ FluidAudio/
 ### Core Components
 - **AsrManager** (`ASR/Parakeet/`): Speech-to-text via TDT (Token Duration Transducer) decoding. Stateless per-chunk processing with automatic decoder state reset.
 - **SlidingWindowAsrManager** (`ASR/Parakeet/SlidingWindow/`): Real-time ASR with sliding window processing and cancellation support.
-- **StreamingAsrEngine** (`ASR/Parakeet/Streaming/`): Protocol for true streaming ASR engines (EOU, Nemotron) with cache-aware encoders.
+- **StreamingAsrManager** (`ASR/Parakeet/Streaming/`): Protocol for true streaming ASR engines (EOU, Nemotron) with cache-aware encoders.
 - **Qwen3AsrManager** (`ASR/Qwen3/`): Qwen3-based ASR with Whisper mel spectrogram frontend.
 - **OfflineDiarizerManager** (`Diarizer/`): Speaker separation via segmentation, embedding extraction, and VBx clustering. 17.7% DER on AMI dataset.
 - **VadManager** (`VAD/`): Voice activity detection with CoreML models.
-- **KokoroSynthesizer** (`TTS/Kokoro/`): Kokoro text-to-speech synthesis.
+- **KokoroAneManager** (`TTS/KokoroAne/`): ANE-resident Kokoro 82M (7-stage CoreML chain) — English + Mandarin.
 - **PocketTtsSynthesizer** (`TTS/PocketTTS/`): PocketTTS streaming text-to-speech synthesis.
+- **StyleTTS2Manager** (`TTS/StyleTTS2/`): StyleTTS2 LibriTTS zero-shot voice cloning.
+- **MagpieManager** (`TTS/Magpie/`): Magpie multilingual TTS (experimental, RTFx < 1.0).
 
 ### Key Patterns
 - **Actor-based concurrency**: Thread-safe processing, no `@unchecked Sendable`
@@ -180,7 +197,9 @@ GitHub Actions workflows:
 
 ## Model Sources
 
-- **Diarization**: [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+- **Diarization**:
+  - Online/Streaming (DiarizerManager): [FluidInference/speaker-diarization-coreml](https://huggingface.co/FluidInference/speaker-diarization-coreml) (based on pyannote/speaker-diarization-3.1)
+  - Offline Batch (OfflineDiarizerManager): [FluidInference/speaker-diarization-coreml](https://huggingface.co/FluidInference/speaker-diarization-coreml) (based on pyannote/speaker-diarization-community-1)
 - **VAD CoreML**: [FluidInference/silero-vad-coreml](https://huggingface.co/FluidInference/silero-vad-coreml)
 - **ASR Models**: [FluidInference/parakeet-tdt-0.6b-v3-coreml](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml)
 - **Test Data**: [alexwengg/musan_mini*](https://huggingface.co/datasets/alexwengg) variants

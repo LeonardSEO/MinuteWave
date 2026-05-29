@@ -1,4 +1,4 @@
-<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-03-27 -->
+<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-05-28 -->
 
 # AGENTS.md — Tests/AINoteTakerAppTests
 
@@ -23,7 +23,7 @@ Swift Testing coverage for storage, migrations, policy validation, localization,
 - Test framework: Swift Testing (`import Testing`)
 - Main command: `swift test`
 - Single-test command: `swift test --filter <test-name>`
-- Status on 2026-03-27: `swift test` currently fails before reaching app tests because `FluidAudio` does not compile under the active toolchain
+- Status on 2026-05-28: `swift test` passes locally after the vendored `FluidAudio` v0.14.7 upgrade. Remaining local warnings are unrelated to test assertions.
 
 ## Code style & conventions
 - Prefer `@Test("descriptive name")` with focused expectations.
@@ -42,7 +42,7 @@ Swift Testing coverage for storage, migrations, policy validation, localization,
 - [ ] New fixtures clean up temp files
 - [ ] Network-related tests use stubs, not live endpoints
 - [ ] Localization-related changes keep the coverage test meaningful
-- [ ] Validation claims mention the current `FluidAudio` compile blocker when relevant
+- [ ] Validation claims mention remaining build warnings when relevant
 
 ## Patterns to Follow
 - If production code adds a new policy or migration branch, add one success path and one rejection/failure-path test.

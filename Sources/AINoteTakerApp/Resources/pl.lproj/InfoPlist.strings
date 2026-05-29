@@ -1,0 +1,3 @@
+"NSMicrophoneUsageDescription" = "MinuteWave używa mikrofonu do tworzenia transkrypcji w czasie rzeczywistym.";
+"NSScreenCaptureUsageDescription" = "MinuteWave używa nagrywania ekranu i dźwięku systemowego do lokalnej transkrypcji.";
+"NSSystemAudioUsageDescription" = "MinuteWave używa nagrywania dźwięku systemowego do transkrypcji dźwięku ze spotkań.";

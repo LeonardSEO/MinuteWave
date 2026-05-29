@@ -8,7 +8,7 @@ final class AppContainer: Sendable {
     let azureProvider: AzureTranscriptionProvider
     let openAIProvider: OpenAITranscriptionProvider
 
-    nonisolated(unsafe) static let shared: AppContainer = {
+    static let shared: AppContainer = {
         do {
             return try AppContainer()
         } catch {

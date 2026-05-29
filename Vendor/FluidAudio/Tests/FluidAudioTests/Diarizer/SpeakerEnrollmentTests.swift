@@ -8,22 +8,32 @@ import XCTest
 /// - `SortformerDiarizer.enrollSpeaker(withAudio:named:)`
 /// - `LSEENDDiarizer.enrollSpeaker(withSamples:named:)`
 final class SpeakerEnrollmentTests: XCTestCase {
-    nonisolated(unsafe) private static var cachedLseendEngine: LSEENDInferenceHelper?
+    nonisolated(unsafe) private static var cachedLseendModel: LSEENDModel?
 
     private func loadSortformerModelsForTest(config: SortformerConfig) async throws -> SortformerModels {
         // These tests validate Sortformer behavior after initialization, not accelerator selection.
         try await SortformerModels.loadFromHuggingFace(config: config, computeUnits: .cpuOnly)
     }
 
-    private func loadLseendEngineForTest(variant: LSEENDVariant = .dihard3) async throws -> LSEENDInferenceHelper {
-        if let cached = Self.cachedLseendEngine {
+    private func loadLseendModelForTest(
+        variant: LSEENDVariant = .ami,
+        stepSize: LSEENDStepSize = .step500ms
+    ) async throws -> LSEENDModel {
+        if let cached = Self.cachedLseendModel {
             return cached
         }
 
-        let descriptor = try await LSEENDModelDescriptor.loadFromHuggingFace(variant: variant)
-        let engine = try LSEENDInferenceHelper(descriptor: descriptor, computeUnits: .cpuOnly)
-        Self.cachedLseendEngine = engine
-        return engine
+        do {
+            let model = try await LSEENDModel.loadFromHuggingFace(
+                variant: variant,
+                stepSize: stepSize,
+                computeUnits: .cpuOnly
+            )
+            Self.cachedLseendModel = model
+            return model
+        } catch {
+            throw XCTSkip("Unable to load LS-EEND test model: \(error)")
+        }
     }
 
     // MARK: - extractSpeakerEmbedding: Error Cases
@@ -115,9 +125,10 @@ final class SpeakerEnrollmentTests: XCTestCase {
 
         // Verify the embedding can be used with initializeKnownSpeakers
         let speaker = Speaker(id: "test", name: "Test", currentEmbedding: embedding, isPermanent: true)
-        manager.initializeKnownSpeakers([speaker])
+        await manager.initializeKnownSpeakers([speaker])
 
-        XCTAssertEqual(manager.speakerManager.speakerCount, 1, "Known speaker should be registered")
+        let speakerCount = await manager.speakerManager.speakerCount
+        XCTAssertEqual(speakerCount, 1, "Known speaker should be registered")
     }
 
     // MARK: - Sortformer enrollSpeaker: Error Cases
@@ -320,30 +331,38 @@ final class SpeakerEnrollmentTests: XCTestCase {
     // MARK: - LS-EEND enrollSpeaker: Error Cases
 
     func testLseendEnrollSpeakerThrowsWhenNotInitialized() {
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
+        let diarizer = DummyUnavailableLSEENDDiarizer()
         let audio = [Float](repeating: 0.1, count: 16000)
 
-        XCTAssertThrowsError(try diarizer.enrollSpeaker(withSamples: audio)) { error in
-            guard case LSEENDError.modelPredictionFailed(let message) = error else {
-                XCTFail("Expected modelPredictionFailed but got \(error)")
+        XCTAssertThrowsError(
+            try diarizer.enrollSpeaker(
+                withAudio: audio,
+                sourceSampleRate: nil,
+                named: nil,
+                overwritingAssignedSpeakerName: true
+            )
+        ) { error in
+            guard case LSEENDError.notInitialized = error else {
+                XCTFail("Expected notInitialized but got \(error)")
                 return
             }
-            XCTAssertTrue(message.contains("not initialized"))
         }
     }
 
     // MARK: - LS-EEND enrollSpeaker: Integration (requires model download)
 
     func testLseendEnrollSpeakerResetsTimelineAndWarmsSession() async throws {
-        XCTExpectFailure("Download might fail in CI environment", strict: false)
-
-        let engine = try await loadLseendEngineForTest()
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
-        diarizer.initialize(engine: engine)
+        let model = try await loadLseendModelForTest()
+        let diarizer = try LSEENDDiarizer(model: model)
         let enrollmentAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 0.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 0.0, durationSeconds: 3.0)
 
-        let speaker = try diarizer.enrollSpeaker(withSamples: enrollmentAudio, named: "Alice")
+        let speaker = try diarizer.enrollSpeaker(
+            withAudio: enrollmentAudio,
+            sourceSampleRate: nil,
+            named: "Alice",
+            overwritingAssignedSpeakerName: true
+        )
 
         if let speaker {
             XCTAssertEqual(speaker.name, "Alice")
@@ -351,25 +370,27 @@ final class SpeakerEnrollmentTests: XCTestCase {
         XCTAssertEqual(diarizer.numFramesProcessed, 0)
         XCTAssertEqual(diarizer.timeline.numFinalizedFrames, 0)
         XCTAssertEqual(namedSpeakerIndices(in: diarizer.timeline), [speaker?.index].compactMap { $0 })
-        XCTAssertTrue(diarizer.hasActiveSession)
+        XCTAssertTrue(diarizer.isAvailable)
     }
 
     func testLseendEnrollSpeakerFollowedByStreamingProcessingStartsAtFrameZero() async throws {
-        XCTExpectFailure("Download might fail in CI environment", strict: false)
-
-        let engine = try await loadLseendEngineForTest()
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
-        diarizer.initialize(engine: engine)
+        let model = try await loadLseendModelForTest()
+        let diarizer = try LSEENDDiarizer(model: model)
         let enrollmentAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 0.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 0.0, durationSeconds: 3.0)
         let liveAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 3.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 3.0, durationSeconds: 3.0)
 
-        let speaker = try diarizer.enrollSpeaker(withSamples: enrollmentAudio, named: "Alice")
+        let speaker = try diarizer.enrollSpeaker(
+            withAudio: enrollmentAudio,
+            sourceSampleRate: nil,
+            named: "Alice",
+            overwritingAssignedSpeakerName: true
+        )
 
         var firstUpdate: DiarizerTimelineUpdate?
         for chunk in DiarizationTestFixtures.chunk(liveAudio, sizes: [977, 1231, 1607]) {
-            if let update = try diarizer.process(samples: chunk) {
+            if let update = try diarizer.process(samples: chunk, sourceSampleRate: nil) {
                 firstUpdate = update
                 break
             }
@@ -387,40 +408,50 @@ final class SpeakerEnrollmentTests: XCTestCase {
     }
 
     func testLseendMultipleEnrollmentsRetainNamedSpeakersAndSession() async throws {
-        XCTExpectFailure("Download might fail in CI environment", strict: false)
-
-        let engine = try await loadLseendEngineForTest()
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
-        diarizer.initialize(engine: engine)
+        let model = try await loadLseendModelForTest()
+        let diarizer = try LSEENDDiarizer(model: model)
         let speakerAAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 0.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 0.0, durationSeconds: 3.0)
         let speakerBAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 3.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 3.0, durationSeconds: 3.0)
 
-        let speakerA = try diarizer.enrollSpeaker(withSamples: speakerAAudio, named: "Alice")
-        let speakerB = try diarizer.enrollSpeaker(withSamples: speakerBAudio, named: "Bob")
+        let speakerA = try diarizer.enrollSpeaker(
+            withAudio: speakerAAudio,
+            sourceSampleRate: nil,
+            named: "Alice",
+            overwritingAssignedSpeakerName: true
+        )
+        let speakerB = try diarizer.enrollSpeaker(
+            withAudio: speakerBAudio,
+            sourceSampleRate: nil,
+            named: "Bob",
+            overwritingAssignedSpeakerName: true
+        )
 
         XCTAssertEqual(diarizer.numFramesProcessed, 0)
         XCTAssertEqual(diarizer.timeline.numFinalizedFrames, 0)
-        XCTAssertTrue(diarizer.hasActiveSession)
+        XCTAssertTrue(diarizer.isAvailable)
         let expectedNames = Set([speakerA?.name, speakerB?.name].compactMap { $0 })
         XCTAssertEqual(Set(namedSpeakerNames(in: diarizer.timeline)), expectedNames)
     }
 
     func testLseendEnrollmentCanRefuseToOverwriteNamedSpeaker() async throws {
-        XCTExpectFailure("Download might fail in CI environment", strict: false)
-
-        let engine = try await loadLseendEngineForTest()
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
-        diarizer.initialize(engine: engine)
+        let model = try await loadLseendModelForTest()
+        let diarizer = try LSEENDDiarizer(model: model)
         let enrollmentAudio = try DiarizationTestFixtures.fixtureAudio(
-            sampleRate: engine.targetSampleRate, startSeconds: 0.0, durationSeconds: 3.0)
+            sampleRate: diarizer.targetSampleRate ?? 16_000, startSeconds: 0.0, durationSeconds: 3.0)
 
-        let firstSpeaker = try diarizer.enrollSpeaker(withSamples: enrollmentAudio, named: "Alice")
+        let firstSpeaker = try diarizer.enrollSpeaker(
+            withAudio: enrollmentAudio,
+            sourceSampleRate: nil,
+            named: "Alice",
+            overwritingAssignedSpeakerName: true
+        )
         try XCTSkipIf(
             firstSpeaker == nil, "Fixture did not produce a confident LS-EEND speaker segment on this host.")
         let secondSpeaker = try diarizer.enrollSpeaker(
-            withSamples: enrollmentAudio,
+            withAudio: enrollmentAudio,
+            sourceSampleRate: nil,
             named: "Bob",
             overwritingAssignedSpeakerName: false
         )
@@ -441,5 +472,50 @@ final class SpeakerEnrollmentTests: XCTestCase {
         timeline.speakers.values
             .compactMap(\.name)
             .sorted()
+    }
+}
+
+private final class DummyUnavailableLSEENDDiarizer: Diarizer {
+    var isAvailable: Bool = false
+    var numFramesProcessed: Int = 0
+    var targetSampleRate: Int? = nil
+    var modelFrameHz: Double? = nil
+    var numSpeakers: Int? = nil
+    var timeline = DiarizerTimeline(config: .default(numSpeakers: 1, frameDurationSeconds: 0.1))
+
+    func addAudio<C>(_ samples: C, sourceSampleRate: Double?) throws where C: Collection, C.Element == Float {}
+    func process() throws -> DiarizerTimelineUpdate? { nil }
+    func process<C>(samples: C, sourceSampleRate: Double?) throws -> DiarizerTimelineUpdate?
+    where
+        C: Collection,
+        C.Element == Float
+    { nil }
+    func processComplete<C>(
+        _ samples: C,
+        sourceSampleRate: Double?,
+        keepingEnrolledSpeakers keepSpeakers: Bool?,
+        finalizeOnCompletion: Bool,
+        progressCallback: ((Int, Int, Int) -> Void)?
+    ) throws -> DiarizerTimeline where C: Collection, C.Element == Float {
+        throw LSEENDError.notInitialized
+    }
+    func processComplete(
+        audioFileURL: URL,
+        keepingEnrolledSpeakers keepSpeakers: Bool?,
+        finalizeOnCompletion: Bool,
+        progressCallback: ((Int, Int, Int) -> Void)?
+    ) throws -> DiarizerTimeline {
+        throw LSEENDError.notInitialized
+    }
+    func reset() {}
+    func cleanup() {}
+    func finalizeSession() throws -> DiarizerTimelineUpdate? { nil }
+    func enrollSpeaker<C>(
+        withAudio samples: C,
+        sourceSampleRate: Double?,
+        named name: String?,
+        overwritingAssignedSpeakerName overwriteAssignedSpeakerName: Bool
+    ) throws -> DiarizerSpeaker? where C: Collection, C.Element == Float {
+        throw LSEENDError.notInitialized
     }
 }

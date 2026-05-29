@@ -1,414 +1,384 @@
 import Foundation
+import CoreML
+import Accelerate
 
-private let lseendLogConversionFactor = Float(1.0 / Foundation.log(10.0))
-
-/// Resolved feature extraction parameters derived from ``LSEENDModelMetadata``.
-///
-/// Captures the concrete STFT and splice-and-subsample settings needed by the
-/// feature extractors, resolving any optional fields in the metadata to their defaults.
-public struct LSEENDFeatureConfig: Sendable, Hashable {
-    /// Audio sample rate in Hz (e.g. 8000).
-    public let sampleRate: Int
-    /// STFT window length in samples.
-    public let winLength: Int
-    /// STFT hop length in samples.
-    public let hopLength: Int
-    /// FFT size (a power of 2 ≥ ``winLength``).
-    public let nFFT: Int
-    /// Number of mel filterbank channels.
-    public let nMels: Int
-    /// Context receptive field half-width for the splice step.
-    public let contextRecp: Int
-    /// Subsampling factor (how many STFT frames per model frame).
-    public let subsampling: Int
-    /// Total input feature dimension per model frame (`nMels × (2 × contextRecp + 1)`).
-    public let inputDim: Int
-
-    /// Creates a feature config by resolving all parameters from the given metadata.
-    public init(metadata: LSEENDModelMetadata) {
-        sampleRate = metadata.resolvedSampleRate
-        winLength = metadata.resolvedWinLength
-        hopLength = metadata.resolvedHopLength
-        nFFT = metadata.resolvedFFTSize
-        nMels = metadata.resolvedMelCount
-        contextRecp = metadata.resolvedContextRecp
-        subsampling = metadata.resolvedSubsampling
-        inputDim = metadata.inputDim
+// MARK: - Feature Provider
+public class LSEENDFeatureProvider {
+    public struct Snapshot: ~Copyable {
+        let state: LSEENDState
+        let melQueue: StreamingChunkQueue
+        let audioQueue: StreamingChunkQueue
+        let cmnMean: [Float]
+        let cmnCount: Int
+        let decoderMaskEnd: Int
     }
 
-    /// Minimum audio chunk size in samples that produces an integer number of model frames.
-    ///
-    /// Equal to `hopLength × subsampling`. Audio buffers should be multiples of this
-    /// size for consistent streaming behavior.
-    public var stableBlockSize: Int {
-        hopLength * subsampling
-    }
-}
+    /// Number of mel chunks currently ready for `emitNextChunk()`.
+    public var readyChunks: Int { lock.withLock { melQueue.readyChunks } }
 
-private func createMelSpectrogram(for config: LSEENDFeatureConfig) -> AudioMelSpectrogram {
-    AudioMelSpectrogram(
-        sampleRate: config.sampleRate,
-        nMels: config.nMels,
-        nFFT: config.nFFT,
-        hopLength: config.hopLength,
-        winLength: config.winLength,
-        preemph: 0,
-        padTo: 1,
-        logFloor: 1e-10,
-        logFloorMode: .clamped,
-        windowPeriodic: true
-    )
-}
+    // MARK: Private Attributes
 
-/// Batch feature extractor for offline LS-EEND inference.
-///
-/// Converts a complete audio buffer into model input features in one pass:
-/// 1. STFT → mel spectrogram
-/// 2. Log-mel with cumulative mean normalization
-/// 3. Splice-and-subsample context windowing
-///
-/// For incremental processing, use ``LSEENDStreamingFeatureExtractor`` instead.
-public final class LSEENDOfflineFeatureExtractor {
-    private let config: LSEENDFeatureConfig
-    private let spectrogram: AudioMelSpectrogram
+    private let melSpectrogram: AudioMelSpectrogram
+    private let converter: AudioConverter
+    private let input: LSEENDInput
 
-    /// Creates an offline feature extractor.
-    ///
-    /// - Parameters:
-    ///   - metadata: Model metadata from which feature parameters are derived.
-    ///   - spectrogram: Optional pre-configured mel spectrogram; one is created if `nil`.
-    public init(metadata: LSEENDModelMetadata, spectrogram: AudioMelSpectrogram? = nil) {
-        let featureConfig = LSEENDFeatureConfig(metadata: metadata)
-        config = featureConfig
-        self.spectrogram = spectrogram ?? createMelSpectrogram(for: featureConfig)
-    }
+    private var melQueue: StreamingChunkQueue
+    private var audioQueue: StreamingChunkQueue
 
-    /// Extracts model input features from a complete audio buffer.
-    ///
-    /// - Parameter audio: Mono audio samples at the model's target sample rate.
-    /// - Returns: Feature matrix with shape `[frames, inputDim]`, or an empty matrix
-    ///   if the audio is too short to produce any frames.
-    public func extractFeatures(audio: [Float]) throws -> LSEENDMatrix {
-        let usableSamples = (audio.count / config.stableBlockSize) * config.stableBlockSize
-        guard usableSamples > 0 else {
-            return .empty(columns: config.inputDim)
-        }
-        let trimmedAudio = Array(audio.prefix(usableSamples))
-        let stftFrameCount = max(0, usableSamples / config.hopLength - 1)
-        guard stftFrameCount > 0 else {
-            return .empty(columns: config.inputDim)
-        }
-        let mel = spectrogram.computeFlatTransposed(
-            audio: trimmedAudio,
-            lastAudioSample: 0,
-            paddingMode: .center,
-            expectedFrameCount: stftFrameCount
-        ).mel
-        let normalized = Self.applyLogMelCumMeanNormalization(
-            mel,
-            rowCount: stftFrameCount,
-            nMels: config.nMels,
-            frameStart: 0,
-            cumulativeFeatureSum: nil
-        )
-        let base = LSEENDMatrix(validatingRows: stftFrameCount, columns: config.nMels, values: normalized.values)
-        return Self.spliceAndSubsample(
-            baseFeatures: base,
-            contextSize: config.contextRecp,
-            subsampling: config.subsampling
-        )
-    }
+    private var cmnMean: [Float]
+    private var cmnCount: Int
 
-    fileprivate static func applyLogMelCumMeanNormalization(
-        _ mel: [Float],
-        rowCount: Int,
-        nMels: Int,
-        frameStart: Int,
-        cumulativeFeatureSum: [Double]?
-    ) -> (values: [Float], cumulativeFeatureSum: [Double]) {
-        var cumulative = cumulativeFeatureSum ?? [Double](repeating: 0, count: nMels)
-        var output = [Float](repeating: 0, count: mel.count)
-        for rowIndex in 0..<rowCount {
-            let count = Double(frameStart + rowIndex + 1)
-            let rowOffset = rowIndex * nMels
-            for melIndex in 0..<nMels {
-                let log10Mel = mel[rowOffset + melIndex] * lseendLogConversionFactor
-                cumulative[melIndex] += Double(log10Mel)
-                output[rowOffset + melIndex] = log10Mel - Float(cumulative[melIndex] / count)
-            }
-        }
-        return (output, cumulative)
-    }
+    private var isRightContextEmpty: Bool = true
 
-    fileprivate static func spliceAndSubsample(
-        baseFeatures: LSEENDMatrix,
-        contextSize: Int,
-        subsampling: Int
-    ) -> LSEENDMatrix {
-        guard baseFeatures.rows > 0 else {
-            return .empty(columns: baseFeatures.columns * ((2 * contextSize) + 1))
-        }
-        let outputRows = (baseFeatures.rows + subsampling - 1) / subsampling
-        let outputColumns = baseFeatures.columns * ((2 * contextSize) + 1)
-        var output = [Float](repeating: 0, count: outputRows * outputColumns)
-        for outputRow in 0..<outputRows {
-            let center = outputRow * subsampling
-            let destinationRowOffset = outputRow * outputColumns
-            for contextOffset in -contextSize...contextSize {
-                let sourceRow = center + contextOffset
-                guard sourceRow >= 0, sourceRow < baseFeatures.rows else {
-                    continue
-                }
-                let destinationOffset = destinationRowOffset + (contextOffset + contextSize) * baseFeatures.columns
-                let sourceOffset = sourceRow * baseFeatures.columns
-                for featureIndex in 0..<baseFeatures.columns {
-                    output[destinationOffset + featureIndex] = baseFeatures.values[sourceOffset + featureIndex]
-                }
-            }
-        }
-        return LSEENDMatrix(validatingRows: outputRows, columns: outputColumns, values: output)
-    }
-}
+    private var decoderMaskEnd: Int
 
-/// Incremental feature extractor for streaming LS-EEND inference.
-///
-/// Maintains internal buffers for audio samples, STFT frames, and base mel features.
-/// As audio arrives via ``pushAudio(_:)``, the extractor incrementally computes STFT frames,
-/// applies log-mel cumulative mean normalization, and emits splice-and-subsampled model frames
-/// as soon as enough context is available.
-///
-/// Call ``finalize()`` after the last audio chunk to flush any remaining buffered frames.
-///
-/// - Important: This class is **not** thread-safe. All calls must be serialized externally.
-public final class LSEENDStreamingFeatureExtractor {
-    private let config: LSEENDFeatureConfig
-    private let spectrogram: AudioMelSpectrogram
+    private let lock = NSLock()
+    private let log10Scale: Float = 1.0 / log(10.0)
+    private let decoderMask: [Float]
 
-    private var audioBuffer: [Float] = []
-    private var audioStartSample = 0
-    private var totalSamples = 0
+    /// Audio samples required past the last real sample to flush every
+    /// buffered real frame through STFT + mel ±context + CNN right-lookahead.
+    private let flushSampleCount: Int
+    private let chunkFrames: Int
+    private let nMels: Int
 
-    private var nextSTFTFrame = 0
-    private var nextModelFrame = 0
-
-    private var baseFeatureStart = 0
-    private var baseFeatureBuffer: [Float] = []
-    private var baseFeatureRows = 0
-    private var cumulativeFeatureSum: [Double]
-
-    /// Creates a streaming feature extractor.
-    ///
-    /// - Parameters:
-    ///   - metadata: Model metadata from which feature parameters are derived.
-    ///   - spectrogram: Optional pre-configured mel spectrogram; one is created if `nil`.
-    public init(metadata: LSEENDModelMetadata, spectrogram: AudioMelSpectrogram? = nil) {
-        let featureConfig = LSEENDFeatureConfig(metadata: metadata)
-        config = featureConfig
-        self.spectrogram = spectrogram ?? createMelSpectrogram(for: featureConfig)
-        cumulativeFeatureSum = [Double](repeating: 0, count: featureConfig.nMels)
-    }
-
-    /// Feeds audio samples and returns any new model input frames.
-    ///
-    /// - Parameter chunk: Mono audio samples at the model's target sample rate.
-    /// - Returns: Feature matrix with shape `[newFrames, inputDim]`, or an empty matrix
-    ///   if no new frames could be produced from the available audio.
-    public func pushAudio(_ chunk: [Float]) throws -> LSEENDMatrix {
-        guard !chunk.isEmpty else {
-            return .empty(columns: config.inputDim)
-        }
-        audioBuffer.append(contentsOf: chunk)
-        totalSamples += chunk.count
-        try appendSTFTFrames(targetFrameCount: stableSTFTFrameCount(), allowRightPad: false, effectiveTotalSamples: nil)
-        return try emitModelFrames(final: false, totalSTFTFrames: nil)
-    }
-
-    /// Flushes remaining buffered audio and returns any final model input frames.
-    ///
-    /// Should be called exactly once after the last ``pushAudio(_:)`` call.
-    /// Applies right-padding to extract any remaining STFT frames that couldn't
-    /// be emitted during streaming.
-    ///
-    /// - Returns: Feature matrix with any remaining frames, or an empty matrix.
-    public func finalize() throws -> LSEENDMatrix {
-        let usableSamples = usableSampleCount(totalSamples)
-        let totalSTFTFrames = offlineSTFTFrameCount(usableSamples)
-        try appendSTFTFrames(
-            targetFrameCount: totalSTFTFrames,
-            allowRightPad: true,
-            effectiveTotalSamples: usableSamples
-        )
-        return try emitModelFrames(final: true, totalSTFTFrames: totalSTFTFrames)
-    }
-
-    private func usableSampleCount(_ sampleCount: Int) -> Int {
-        (sampleCount / config.stableBlockSize) * config.stableBlockSize
-    }
-
-    private func stableSTFTFrameCount() -> Int {
-        let leftPad = config.nFFT / 2
-        guard totalSamples > leftPad else {
-            return 0
-        }
-        return max(0, ((totalSamples - leftPad) / config.hopLength) + 1)
-    }
-
-    private func offlineSTFTFrameCount(_ usableSamples: Int) -> Int {
-        guard usableSamples > 0 else {
-            return 0
-        }
-        return max(0, usableSamples / config.hopLength - 1)
-    }
-
-    private func totalModelFrameCount(_ totalSTFTFrames: Int) -> Int {
-        guard totalSTFTFrames > 0 else {
-            return 0
-        }
-        return (totalSTFTFrames + config.subsampling - 1) / config.subsampling
-    }
-
-    private func appendSTFTFrames(
-        targetFrameCount: Int,
-        allowRightPad: Bool,
-        effectiveTotalSamples: Int?
+    // MARK: - Init
+    public init(
+        from metadata: borrowing LSEENDMetadata,
+        restoringFrom snapshot: consuming Snapshot? = nil
     ) throws {
-        guard targetFrameCount > nextSTFTFrame else {
-            return
-        }
-        let frameStart = nextSTFTFrame
-        let frameStop = targetFrameCount
-        let expectedFrames = frameStop - frameStart
-        let segment = try stftSegment(
-            frameStart: frameStart,
-            frameStop: frameStop,
-            allowRightPad: allowRightPad,
-            effectiveTotalSamples: effectiveTotalSamples
+        self.nMels = metadata.nMels
+
+        let contextMels = metadata.contextSize
+        let contextSamples = metadata.nFFT / 2
+        let chunkMels = metadata.subsampling * metadata.chunkSize
+        let chunkSamples = metadata.hopLength * chunkMels
+        let rightSamples = metadata.nFFT / 2 - metadata.hopLength
+
+        // (mel ±context + CNN right-lookahead) mels × hop + STFT last-window halfNfft
+        self.flushSampleCount =
+            (contextMels + metadata.convDelay * metadata.subsampling) * metadata.hopLength
+            + contextSamples
+
+        self.chunkFrames = metadata.chunkSize
+
+        var decoderMaskTemp = [Float](repeating: 1, count: metadata.convDelay + metadata.chunkSize)
+        vDSP_vclr(&decoderMaskTemp, 1, vDSP_Length(metadata.convDelay))
+        self.decoderMask = decoderMaskTemp
+
+        // Initialize processors
+        self.melSpectrogram = AudioMelSpectrogram(
+            sampleRate: metadata.sampleRate,
+            nMels: metadata.nMels,
+            nFFT: metadata.nFFT,
+            hopLength: metadata.hopLength,
+            winLength: metadata.winLength,
+            preemph: 0,
+            padTo: 0,
+            logFloor: 1e-10,
+            logFloorMode: .clamped,
+            windowPeriodic: true
         )
-        let mel = spectrogram.computeFlatTransposed(
-            audio: segment,
+
+        self.converter = AudioConverter(sampleRate: Double(metadata.sampleRate))
+
+        // Initialize state
+        if let snapshot {
+            self.melQueue = snapshot.melQueue
+            self.audioQueue = snapshot.audioQueue
+            self.cmnMean = snapshot.cmnMean
+            self.cmnCount = snapshot.cmnCount
+            self.decoderMaskEnd = snapshot.decoderMaskEnd
+            self.input = try LSEENDInput(from: metadata, state: consume snapshot.state)
+        } else {
+            self.melQueue = StreamingChunkQueue(
+                chunkLength: chunkMels,
+                leftContextLength: contextMels,
+                rightContextLength: contextMels + 1 - metadata.subsampling,
+                stride: nMels
+            )
+            self.audioQueue = StreamingChunkQueue(
+                chunkLength: chunkSamples,
+                leftContextLength: contextSamples,
+                rightContextLength: rightSamples,
+                stride: 1
+            )
+
+            self.cmnMean = .init(repeating: 0, count: nMels)
+            self.cmnCount = 0
+            self.decoderMaskEnd = 0
+
+            // Initialize preprocessor and converter
+            self.input = try LSEENDInput(from: metadata)
+        }
+    }
+
+    // MARK: - Push Audio
+
+    /// Add audio to the processing queue
+    /// - Parameters:
+    ///   - samples: Audio samples to enqueue
+    ///   - sourceSampleRate: Sample rate of audio input
+    ///   - eagerPreprocessing: Whether to eagerly feed audio chunks to the mel spectrogram
+    public func enqueueAudio<C: Collection>(
+        _ samples: C,
+        withSampleRate sourceSampleRate: Double? = nil,
+        eagerPreprocessing: Bool = true
+    ) throws where C.Element == Float {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let sourceSampleRate {
+            let array = (samples as? [Float]) ?? Array(samples)
+            try audioQueue.append(converter.resample(array, from: sourceSampleRate))
+        } else {
+            audioQueue.append(samples)
+        }
+
+        if eagerPreprocessing {
+            processAudioQueue()
+        }
+    }
+
+    /// Resample and enqueue a full audio file.
+    /// - Parameter url: Audio file to read.
+    /// - Returns: Number of samples enqueued (at the model's sample rate).
+    @discardableResult
+    public func enqueueAudioFile(at url: URL) throws -> Int {
+        let samples = try converter.resampleAudioFile(url)
+        lock.lock()
+        defer { lock.unlock() }
+        audioQueue.append(samples)
+        processAudioQueue()
+        return samples.count
+    }
+
+    /// Add silence to push all queued audio out of the right context
+    /// - Parameter flush Whether to flush the queued audio into the mel spectrogram preprocessor
+    public func drainRightContextWithSilence(flush: Bool = true) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // 1. Trailing silence covering STFT + mel ±context + CNN right-lookahead.
+        audioQueue.append(repeatElement(0, count: flushSampleCount))
+
+        // 2. Round up to the next audio-chunk boundary so popAllChunks consumes
+        //    every real sample plus the silence we just pushed.
+        let unread = audioQueue.unreadFloats
+        let chunk = audioQueue.chunkFloats
+        let ctx = audioQueue.contextFloats
+        let overCtx = max(0, unread - ctx)
+        let shortfall = (chunk - overCtx % chunk) % chunk
+        if shortfall > 0 {
+            audioQueue.append(repeatElement(0, count: shortfall))
+        }
+
+        // 3. Drain audioQueue → STFT → log10 → CMN → melQueue.
+        if flush {
+            processAudioQueue()
+        }
+    }
+
+    // MARK: - Read Chunk
+
+    /// Read the next chunk from the mel
+    public func emitNextChunk() throws -> LSEENDInput? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        processAudioQueue()
+        guard let rawChunk = melQueue.popNextChunk() else { return nil }
+
+        // Advance decoder mask
+        decoderMaskEnd = min(decoderMaskEnd + chunkFrames, decoderMask.count)
+
+        try input.loadInputs(
+            melFeatures: rawChunk,
+            decoderMask: decoderMask[decoderMaskEnd - chunkFrames..<decoderMaskEnd],
+            warmupFrames: min(decoderMask.count - decoderMaskEnd, chunkFrames)
+        )
+
+        return input
+    }
+
+    // MARK: - Snapshot and Rollback
+
+    public func takeSnapshot() throws -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = Snapshot(
+            state: try input.state.copy(),
+            melQueue: melQueue,
+            audioQueue: audioQueue,
+            cmnMean: cmnMean,
+            cmnCount: cmnCount,
+            decoderMaskEnd: decoderMaskEnd
+        )
+        return result
+    }
+
+    /// Rollback to a previous snapshot.
+    /// - Parameters:
+    ///   - snapshot Snapshot to revert to
+    ///   - keepingState Whether to preserve the current recurrent state
+    public func rollback(to snapshot: consuming Snapshot, keepingState: Bool = false) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !keepingState { self.input.state = snapshot.state }
+        self.melQueue = snapshot.melQueue
+        self.audioQueue = snapshot.audioQueue
+        self.cmnMean = snapshot.cmnMean
+        self.cmnCount = snapshot.cmnCount
+        self.decoderMaskEnd = snapshot.decoderMaskEnd
+    }
+
+    /// Clear preprocessor buffers + model recurrence state + frame counter.
+    public func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        vDSP.fill(&cmnMean, with: 0)
+        cmnCount = 0
+        decoderMaskEnd = 0
+        audioQueue.reset()
+        melQueue.reset()
+        input.resetState()
+    }
+
+    // MARK: - Helpers
+
+    private func processAudioQueue() {
+        guard let audioChunk = audioQueue.popAllChunks() else { return }
+
+        var (melFeats, melFrames, _) = melSpectrogram.computeFlatTransposed(
+            audio: audioChunk,
             lastAudioSample: 0,
             paddingMode: .prePadded,
-            expectedFrameCount: expectedFrames
-        ).mel
-        let normalized = LSEENDOfflineFeatureExtractor.applyLogMelCumMeanNormalization(
-            mel,
-            rowCount: expectedFrames,
-            nMels: config.nMels,
-            frameStart: frameStart,
-            cumulativeFeatureSum: cumulativeFeatureSum
+            expectedFrameCount: nil
         )
-        cumulativeFeatureSum = normalized.cumulativeFeatureSum
-        baseFeatureBuffer.append(contentsOf: normalized.values)
-        baseFeatureRows += expectedFrames
-        nextSTFTFrame = frameStop
-        dropConsumedAudio()
-    }
 
-    private func stftSegment(
-        frameStart: Int,
-        frameStop: Int,
-        allowRightPad: Bool,
-        effectiveTotalSamples: Int?
-    ) throws -> [Float] {
-        guard frameStop > frameStart else {
-            return []
-        }
-        let leftPad = config.nFFT / 2
-        let total = effectiveTotalSamples ?? totalSamples
-        let globalStart = frameStart * config.hopLength - leftPad
-        let globalStop = (frameStop - 1) * config.hopLength - leftPad + config.nFFT
+        // Rescale to use log10 instead of ln
+        var scale = log10Scale
+        vDSP_vsmul(melFeats, 1, &scale, &melFeats, 1, vDSP_Length(melFrames * nMels))
 
-        let prefixCount = max(0, -globalStart)
-        let suffixCount = allowRightPad ? max(0, globalStop - total) : 0
-        let rawStart = max(0, globalStart)
-        let rawStop = min(total, globalStop)
-        guard rawStart >= audioStartSample else {
-            throw LSEENDError.unsupportedAudio(
-                "Audio buffer underflow. Need sample \(rawStart) but buffer starts at \(audioStartSample)."
-            )
-        }
-        let localStart = rawStart - audioStartSample
-        let localStop = rawStop - audioStartSample
-        var segment = [Float](repeating: 0, count: prefixCount + (localStop - localStart) + suffixCount)
-        let coreCount = max(0, localStop - localStart)
-        if coreCount > 0 {
-            for index in 0..<coreCount {
-                segment[prefixCount + index] = audioBuffer[localStart + index]
+        // Cumulative mean normalization — sequential by definition.
+        melFeats.withUnsafeMutableBufferPointer { melFeatsBuffer in
+            let melFrameLength = vDSP_Length(nMels)
+            guard let melBase = melFeatsBuffer.baseAddress else { return }
+
+            for melFrame in stride(from: melBase, to: melBase + melFeatsBuffer.count, by: nMels) {
+                // µ[k] = µ[k-1] + (mel[k] - µ[k-1]) * 1 / k
+                cmnCount += 1
+                var alpha = 1.0 / Float(cmnCount)
+                vDSP_vintb(cmnMean, 1, melFrame, 1, &alpha, &cmnMean, 1, melFrameLength)
+                // mel[k] <- mel[k] - µ[k]. vDSP_vsub(A,_,B,_,C,_,N) is C = B - A.
+                vDSP_vsub(cmnMean, 1, melFrame, 1, melFrame, 1, melFrameLength)
             }
         }
-        return segment
+
+        melQueue.append(consume melFeats)
+    }
+}
+
+// MARK: - Streaming Chunk Queue
+
+public struct StreamingChunkQueue {
+    /// Stride between frames if features are n-dimensional arrays
+    public let stride: Int
+
+    /// Total context size in floats (`leftContextFloats + rightContextFloats`).
+    public let contextFloats: Int
+
+    /// Unpadded chunk size
+    public let chunkFloats: Int
+
+    /// Padded chunk size — width of a `popNextChunk` / `popAllChunks` slice.
+    public let paddedChunkFloats: Int
+
+    /// Whether the buffer is empty
+    public var isEmpty: Bool { buffer.isEmpty }
+
+    /// Number of unread floats
+    public var unreadFloats: Int { buffer.count - head }
+
+    /// Number of full chunks currently poppable via `popNextChunk` / `popAllChunks`.
+    public var readyChunks: Int { max(0, (unreadFloats - contextFloats) / chunkFloats) }
+
+    // MARK: - Private attributes
+
+    /// Pre-pad width in floats — how many leading zeros are seeded at init
+    private let leftContextFloats: Int
+
+    /// Next index at which to start processing
+    private var head: Int
+
+    /// Data buffer
+    private var buffer: [Float] = []
+
+    /// Whether a chunk is ready
+    public var hasChunk: Bool {
+        buffer.count - head >= paddedChunkFloats
     }
 
-    private func emitModelFrames(final: Bool, totalSTFTFrames: Int?) throws -> LSEENDMatrix {
-        var output = [Float]()
-        let latestFrame = nextSTFTFrame - 1
-        let totalModelFrames = final ? self.totalModelFrameCount(totalSTFTFrames ?? 0) : nil
+    // MARK: - Init
 
-        while true {
-            let centerIndex = nextModelFrame * config.subsampling
-            let maxIndex: Int
-            if final {
-                guard let totalModelFrames, let totalSTFTFrames else { break }
-                if nextModelFrame >= totalModelFrames {
-                    break
-                }
-                maxIndex = totalSTFTFrames - 1
-            } else {
-                if centerIndex + config.contextRecp > latestFrame {
-                    break
-                }
-                maxIndex = latestFrame
-            }
-            output.append(contentsOf: try spliceFrame(centerIndex: centerIndex, maxIndex: maxIndex))
-            nextModelFrame += 1
-            dropConsumedBaseFeatures()
-        }
+    /// - Parameters:
+    ///   - chunkLength Number of frames in a chunk
+    ///   - leftContextLength Number of frames in a chunk's left context
+    ///   - rightContextLength Number of frames in a chunk's right context (may be negative)
+    ///   - stride Number of floats in a frame
+    public init(
+        chunkLength: Int,
+        leftContextLength: Int,
+        rightContextLength: Int,
+        stride: Int
+    ) {
+        self.stride = stride
+        self.chunkFloats = chunkLength * stride
+        self.leftContextFloats = leftContextLength * stride
+        self.contextFloats = (leftContextLength + rightContextLength) * stride
+        self.paddedChunkFloats = chunkFloats + contextFloats
 
-        let outputRows = output.isEmpty ? 0 : output.count / config.inputDim
-        return LSEENDMatrix(validatingRows: outputRows, columns: config.inputDim, values: output)
+        self.head = 0
+
+        self.buffer.reserveCapacity(paddedChunkFloats * 2)
+        self.buffer.append(contentsOf: repeatElement(0, count: leftContextFloats))
     }
 
-    private func spliceFrame(centerIndex: Int, maxIndex: Int) throws -> [Float] {
-        var frame = [Float](repeating: 0, count: config.inputDim)
-        for frameIndex in (centerIndex - config.contextRecp)...(centerIndex + config.contextRecp) {
-            let destinationBase = (frameIndex - (centerIndex - config.contextRecp)) * config.nMels
-            guard frameIndex >= 0, frameIndex <= maxIndex else {
-                continue
-            }
-            let localIndex = frameIndex - baseFeatureStart
-            guard localIndex >= 0, localIndex < baseFeatureRows else {
-                throw LSEENDError.unsupportedAudio(
-                    "Feature buffer underflow. Need frame \(frameIndex), buffer covers [\(baseFeatureStart), \(baseFeatureStart + baseFeatureRows - 1)]."
-                )
-            }
-            let sourceBase = localIndex * config.nMels
-            for melIndex in 0..<config.nMels {
-                frame[destinationBase + melIndex] = baseFeatureBuffer[sourceBase + melIndex]
-            }
+    // MARK: - Append and Pop
+
+    public mutating func append<C: Collection>(_ newElements: C)
+    where C.Element == Float {
+        // Lazy trimming
+        if buffer.count + newElements.count > buffer.capacity {
+            buffer.removeFirst(head)
+            head = 0
         }
-        return frame
+
+        // Allow Swift to reserve more memory if needed after the trimming
+        buffer.append(contentsOf: newElements)
     }
 
-    private func dropConsumedAudio() {
-        let leftPad = config.nFFT / 2
-        let keepFrom = max(0, nextSTFTFrame * config.hopLength - leftPad)
-        let dropCount = keepFrom - audioStartSample
-        guard dropCount > 0 else {
-            return
-        }
-        audioBuffer.removeFirst(dropCount)
-        audioStartSample += dropCount
+    /// Pop the last chunk
+    public mutating func popNextChunk() -> ArraySlice<Float>? {
+        guard hasChunk else { return nil }
+        let result = buffer[head..<head + paddedChunkFloats]
+        head += chunkFloats
+        return result
     }
 
-    private func dropConsumedBaseFeatures() {
-        let keepFrom = max(0, nextModelFrame * config.subsampling - config.contextRecp)
-        let dropRows = keepFrom - baseFeatureStart
-        guard dropRows > 0 else {
-            return
-        }
-        let dropCount = dropRows * config.nMels
-        baseFeatureBuffer.removeFirst(dropCount)
-        baseFeatureRows -= dropRows
-        baseFeatureStart += dropRows
+    /// Pop all available chunks as one buffer
+    public mutating func popAllChunks() -> ArraySlice<Float>? {
+        guard hasChunk else { return nil }
+        let newHead = head + (buffer.count - head - contextFloats) / chunkFloats * chunkFloats
+        let result = buffer[head..<newHead + contextFloats]
+        head = newHead
+        return result
+    }
+
+    /// Reset buffer
+    public mutating func reset() {
+        self.head = 0
+        self.buffer.removeAll(keepingCapacity: true)
+        self.buffer.append(contentsOf: repeatElement(0, count: leftContextFloats))
     }
 }

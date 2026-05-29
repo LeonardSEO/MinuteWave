@@ -460,7 +460,7 @@ swift run -c release fluidaudiocli nemotron-benchmark --chunk 560
 
 ## Speaker Diarization
 
-The offline version uses the community-1 model, the online version uses the legacy speaker-diarization-3.1 model.
+Both offline and online versions use the community-1 model (via FluidInference/speaker-diarization-coreml).
 
 ### Offline diarization pipeline
 
@@ -484,6 +484,40 @@ Step Ratio 1, min duration 0 (edited)
 ```
 
 Note that the baseline pytorch version is ~11% DER, we lost some precision dropping down to fp16 precision in order to run most of the embedding model on neural engine. But as a result, we significantly out perform the baseline `mps` backend as well. the pyannote-community-1 on cpu is ~1.5-2 RTFx, on mps, it's ~20-25 RTFx.
+
+Running on the full AMI SDM 16-meeting test set (official NeMo/pyannote evaluation split: EN2002, ES2004, IS1009, TS3003 × a-d):
+
+```bash
+swift run -c release fluidaudiocli diarization-benchmark --mode offline \
+    --dataset ami-sdm --auto-download
+```
+
+```text
+------------------------------------------------------------------------------------------
+Meeting        DER %    JER %    Miss %     FA %     SE %   Speakers     RTFx
+------------------------------------------------------------------------------------------
+IS1009c           5.1      5.9      3.1      1.5      0.6     4/4        94.6
+IS1009b           5.4      6.4      2.8      1.4      1.1     4/4        77.6
+ES2004b           6.0      7.0      2.7      2.2      1.1     4/4        70.4
+ES2004c           6.4      7.3      2.0      3.4      1.0     4/4        70.5
+EN2002c           7.8      9.7      5.1      0.5      2.2     3/3        60.3
+TS3003b           8.0      7.8      3.6      3.7      0.7     4/4        71.4
+TS3003c           9.0      8.7      6.1      1.9      0.9     4/4        70.4
+EN2002b           9.1     12.9      4.0      1.9      3.2     5/4        63.4
+IS1009d           9.2     11.7      4.5      2.6      2.2     4/4        91.6
+IS1009a           9.9     11.9      5.0      2.5      2.4     4/4        60.8
+ES2004a          10.4     13.4      7.5      1.6      1.4     4/4        60.0
+EN2002a          10.6     15.0      5.4      1.2      4.0     4/4        52.2
+ES2004d          11.4     16.4      5.3      2.6      3.5     4/4        62.1
+TS3003a          17.2     64.1     13.1      1.3      2.8     2/4        68.7
+EN2002d          18.3     38.2      4.6      1.5     12.2     3/4        78.6
+TS3003d          26.0     41.6     11.0      2.2     12.8     3/4        64.5
+------------------------------------------------------------------------------------------
+AVERAGE          10.6     17.4      5.4      2.0      3.3      -         69.8
+==========================================================================================
+```
+
+12/16 meetings detect the correct speaker count. Average DER 10.62% matches published pyannote-community-1 offline numbers on this split (~11-12%).
 
 ### Streaming/online Diarization
 
@@ -642,20 +676,21 @@ AVERAGE          31.7     21.5      0.5      9.7         -     126.7
 ## LS-EEND Streaming Diarization
 A research prototype from Westlake University for streaming speaker diarization.
 
-Model: [GradientDescent2718/ls-eend-coreml](https://huggingface.co/GradientDescent2718/ls-eend-coreml). 
+Model: [FluidInference/lseend-coreml](https://huggingface.co/FluidInference/lseend-coreml).
 
 Hardware: Apple M4 MAX, 2026, macOS 26.1 (CPU only)
 
-### AMI SDM Dataset (AMI Config - 1s latency, 0.5s between updates)
+### AMI SDM Dataset (AMI variant, `--step-size 500ms`)
+
+Each LS-EEND CoreML bundle is keyed by `(variant, stepSize)`. The run below uses the `.ami` variant with `.step500ms`, which commits 5 output frames (~500 ms) per CoreML call.
 
 ```bash
-swift run fluidaudiocli lseend-benchmark --variant ami --auto-download
+swift run fluidaudiocli lseend-benchmark --variant ami --step-size 500ms --auto-download
 ```
 
 ```text
 ================================================================================
 LS-EEND BENCHMARK SUMMARY
-[23:17:34.535] [DEBUG] [FluidAudio.LSEENDDiarizer] LS-EEND state reset
 ================================================================================
 Results Sorted by DER:
 ----------------------------------------------------------------------
@@ -734,3 +769,82 @@ Both the English BART G2P and multilingual ByT5 G2P models run fastest on CPU-on
 | cpuOnly | **13.0** |
 | all (ANE+GPU+CPU) | 17.3 |
 | cpuAndGPU | 23.4 |
+
+## CTC zh-CN Mandarin ASR (Experimental)
+
+Parakeet CTC 0.6B zh-CN model converted to CoreML for on-device Mandarin Chinese transcription.
+
+> **⚠️ Experimental Feature**: This is an early preview of Mandarin Chinese ASR support. The API and performance characteristics may change in future releases.
+
+Model: [FluidInference/parakeet-ctc-0.6b-zh-cn-coreml](https://huggingface.co/FluidInference/parakeet-ctc-0.6b-zh-cn-coreml)
+
+Hardware: Apple M2, 2022, macOS 26
+
+### THCHS-30 Test Set
+
+Full benchmark on the complete THCHS-30 test set — 2,495 utterances (250 unique sentences × 10 speakers) from the THCHS-30 corpus.
+
+Dataset: [FluidInference/THCHS-30-tests](https://huggingface.co/datasets/FluidInference/THCHS-30-tests)
+
+```bash
+swift run -c release fluidaudiocli ctc-zh-cn-benchmark --auto-download
+```
+
+| Metric | int8 encoder (0.55 GB) |
+|---|---|
+| **Mean CER** | **8.23%** |
+| **Median CER** | **6.45%** |
+| CER = 0% (perfect) | 435 (17.4%) |
+| CER < 5% | 947 (38.0%) |
+| CER < 10% | 1,674 (67.1%) |
+| CER < 20% | 2,325 (93.2%) |
+| Mean Latency | 614 ms |
+| Mean RTFx | 14.83x |
+
+### Error Analysis
+
+Error analysis from the 100 highest-CER samples (out of the full 2,495) identified 862 substitution errors. The dominant patterns:
+
+- **Homophones / near-homophones**: acoustically similar syllables (e.g. 呢/了, 了/的) account for the majority of substitutions — unavoidable without a language model
+- **Digit representation**: the model may output Arabic digits (1, 5, 2011) when references use Chinese characters (一五, 二零一一); the benchmark normalizer converts digits before scoring to avoid penalizing this
+- **Sentence-final particles**: 了/的/呢/吧 are frequently confused, contributing a disproportionate share of errors given their high occurrence
+
+### Beam Search
+
+Beam search does not improve CER for this model without a language model. Greedy decoding (beam width 1) is recommended.
+
+### Recommendations
+
+- **Greedy decoding** is sufficient for production use at this CER level.
+- For applications requiring <8% CER, a character-level language model would be needed.
+- Int8 encoder (0.55 GB) performs on par with FP32 (1.1 GB).
+
+## TDT Japanese ASR
+
+Parakeet TDT 0.6B Japanese model converted to CoreML for on-device Japanese transcription. Hybrid architecture using CTC preprocessor/encoder with TDT v2 decoder/joint (workaround for CoreML conversion bug).
+
+Model: [FluidInference/parakeet-ctc-0.6b-ja-coreml](https://huggingface.co/FluidInference/parakeet-ctc-0.6b-ja-coreml)
+
+Hardware: Apple M2, 2022, macOS 26
+
+### JSUT-basic5000 Test Set
+
+Full benchmark on the complete JSUT-basic5000 dataset — 5,000 utterances from a single Japanese speaker.
+
+Dataset: [JSUT-basic5000](https://sites.google.com/site/shinnosuketakamichi/publication/jsut)
+
+```bash
+swift run -c release fluidaudiocli ja-benchmark --decoder tdt --dataset jsut --samples 5000 --auto-download
+```
+
+| Metric | TDT Decoder |
+|---|---|
+| **Mean CER** | **6.88%** |
+| **Median CER** | **4.08%** |
+| CER < 5% | 2,683 (53.7%) |
+| CER < 10% | 3,549 (71.0%) |
+| CER < 20% | 4,556 (91.1%) |
+| Mean Latency | 208.8 ms |
+| Mean RTFx | 28.9x |
+
+**Note:** CER calculation includes number normalization (full-width digits → half-width, kanji numbers → Arabic) matching NVIDIA's evaluation methodology. NVIDIA reports 6.4% CER for the same model on JSUT-basic5000.

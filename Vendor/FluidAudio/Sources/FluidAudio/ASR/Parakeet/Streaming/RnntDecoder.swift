@@ -5,6 +5,8 @@ import Foundation
 public struct DecodeResult: Sendable {
     /// Predicted token IDs for this chunk
     public let tokenIds: [Int]
+    /// Encoder frame index at which each token was emitted.
+    public let tokenFrames: [Int]
     /// Whether End-of-Utterance was detected
     public let eouDetected: Bool
 }
@@ -45,10 +47,10 @@ public final class RnntDecoder {
         // Zero out states
         let count = hState.count
         hState.withUnsafeMutableBufferPointer(ofType: Float.self) { ptr, _ in
-            ptr.baseAddress?.assign(repeating: 0, count: count)
+            ptr.baseAddress?.update(repeating: 0, count: count)
         }
         cState.withUnsafeMutableBufferPointer(ofType: Float.self) { ptr, _ in
-            ptr.baseAddress?.assign(repeating: 0, count: count)
+            ptr.baseAddress?.update(repeating: 0, count: count)
         }
         lastToken = blankId
     }
@@ -64,6 +66,7 @@ public final class RnntDecoder {
         encoderOutput: MLMultiArray, timeOffset: Int = 0, skipFrames: Int = 0, validOutLen: Int? = nil
     ) throws -> DecodeResult {
         var predictedIds: [Int] = []
+        var predictedFrames: [Int] = []
         var eouDetected = false
 
         let T = encoderOutput.shape[2].intValue
@@ -122,6 +125,7 @@ public final class RnntDecoder {
                     break outerLoop
                 } else {
                     predictedIds.append(Int(tokenId))
+                    predictedFrames.append(t)
                     lastToken = tokenId
 
                     // Update State
@@ -140,22 +144,7 @@ public final class RnntDecoder {
             }
         }
 
-        return DecodeResult(tokenIds: predictedIds, eouDetected: eouDetected)
-    }
-
-    /// Decodes the encoder output using greedy search (legacy method without EOU status).
-    /// - Parameter encoderOutput: [1, 512, T]
-    /// - Parameter timeOffset: Global time offset for debugging
-    /// - Parameter skipFrames: Number of frames to skip at start (for overlap handling)
-    /// - Parameter validOutLen: Number of valid output frames to decode. If nil, decode all frames.
-    ///                          For streaming, this should be set to streaming_cfg.valid_out_len.
-    /// - Returns: List of predicted token IDs
-    public func decode(
-        encoderOutput: MLMultiArray, timeOffset: Int = 0, skipFrames: Int = 0, validOutLen: Int? = nil
-    ) throws -> [Int] {
-        let result = try decodeWithEOU(
-            encoderOutput: encoderOutput, timeOffset: timeOffset, skipFrames: skipFrames, validOutLen: validOutLen)
-        return result.tokenIds
+        return DecodeResult(tokenIds: predictedIds, tokenFrames: predictedFrames, eouDetected: eouDetected)
     }
 
     private func extractEncoderStep(
@@ -229,7 +218,6 @@ public final class RnntDecoder {
 
         return output
     }
-
 }
 
 enum RnntDecoderError: Error, LocalizedError {

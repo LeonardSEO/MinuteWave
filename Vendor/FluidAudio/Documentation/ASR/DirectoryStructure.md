@@ -9,7 +9,7 @@ ASR/
 ├── ANEOptimizer.swift
 ├── AsrManager.swift
 ├── AsrModels.swift
-├── AsrTranscription.swift
+├── AsrManager+Transcription.swift
 ├── AsrTypes.swift
 ├── AudioBuffer.swift
 ├── ChunkProcessor.swift
@@ -33,7 +33,7 @@ ASR/
 │   ├── StreamingAsrManager.swift
 │   ├── StreamingAsrSession.swift
 │   ├── StreamingEouAsrManager.swift
-│   ├── NemotronStreamingAsrManager.swift
+│   ├── StreamingNemotronAsrManager.swift
 │   ├── NemotronChunkSize.swift
 │   ├── NemotronPipeline.swift
 │   ├── NemotronStreamingConfig.swift
@@ -49,7 +49,7 @@ ASR/
 
 1. **Parakeet files at the ASR root.** Files like `AsrManager.swift`, `ChunkProcessor.swift`, and `AudioBuffer.swift` are Parakeet-specific but sit at the `ASR/` root as if they are shared infrastructure. Qwen3 has its own manager and models and shares none of this code.
 
-2. **`Streaming/` conflates two different things.** `StreamingAsrManager` uses an offline encoder with overlapping sliding-window chunks — it is not true streaming. It lived alongside `StreamingEouAsrManager` and `NemotronStreamingAsrManager`, which are actual cache-aware streaming engines. The naming made it unclear which was which.
+2. **`Streaming/` conflates two different things.** `StreamingAsrManager` uses an offline encoder with overlapping sliding-window chunks — it is not true streaming. It lived alongside `StreamingEouAsrManager` and `StreamingNemotronAsrManager`, which are actual cache-aware streaming engines. The naming made it unclear which was which.
 
 3. **`CTC/` and `CustomVocabulary/` at the top level.** These are only used by the sliding-window pipeline, not by true streaming or Qwen3. Their placement suggested they were shared ASR utilities.
 
@@ -60,50 +60,66 @@ ASR/
 ```
 ASR/
 ├── Parakeet/
-│   ├── ANEOptimizer.swift
-│   ├── AsrManager.swift
-│   ├── AsrModels.swift
-│   ├── AsrTranscription.swift
+│   ├── ParakeetLanguageModels.swift
 │   ├── AsrTypes.swift
 │   ├── AudioBuffer.swift
-│   ├── ChunkProcessor.swift
-│   ├── MLArrayCache.swift
-│   ├── PerformanceMetrics.swift
-│   ├── ProgressEmitter.swift
-│   │
-│   ├── Decoder/
-│   │   ├── BlasIndex.swift
-│   │   ├── EncoderFrameView.swift
-│   │   ├── TdtConfig.swift
-│   │   ├── TdtDecoderState.swift
-│   │   ├── TdtDecoderV2.swift
-│   │   ├── TdtDecoderV3.swift
-│   │   └── TdtHypothesis.swift
 │   │
 │   ├── SlidingWindow/
 │   │   ├── SlidingWindowAsrManager.swift
 │   │   ├── SlidingWindowAsrSession.swift
-│   │   ├── CTC/
+│   │   │
+│   │   ├── TDT/                         ← All TDT batch processing
+│   │   │   ├── AsrManager.swift         (multilingual, internal engine)
+│   │   │   ├── AsrManager+Pipeline.swift
+│   │   │   ├── AsrManager+TokenProcessing.swift
+│   │   │   ├── AsrManager+Transcription.swift
+│   │   │   ├── AsrModels.swift
+│   │   │   ├── ChunkProcessor.swift
+│   │   │   ├── TdtJaManager.swift       (Japanese)
+│   │   │   ├── TdtJaModels.swift
+│   │   │   └── Decoder/                 (TDT infrastructure)
+│   │   │       ├── BlasIndex.swift
+│   │   │       ├── EncoderFrameView.swift
+│   │   │       ├── TdtConfig.swift
+│   │   │       ├── TdtDecoderState.swift
+│   │   │       ├── TdtDecoderV2.swift
+│   │   │       ├── TdtDecoderV3.swift
+│   │   │       ├── TdtHypothesis.swift
+│   │   │       ├── TdtModelInference.swift
+│   │   │       ├── TdtJointDecision.swift
+│   │   │       ├── TdtJointInputProvider.swift
+│   │   │       ├── TdtDurationMapping.swift
+│   │   │       └── TdtFrameNavigation.swift
+│   │   │
+│   │   ├── CTC/                         ← All CTC batch + language variants
 │   │   │   ├── ARPALanguageModel.swift
-│   │   │   └── CtcDecoder.swift
+│   │   │   ├── CtcDecoder.swift
+│   │   │   ├── CtcJaManager.swift       (Japanese)
+│   │   │   ├── CtcJaModels.swift
+│   │   │   ├── CtcZhCnManager.swift     (Chinese)
+│   │   │   └── CtcZhCnModels.swift
+│   │   │
 │   │   └── CustomVocabulary/
 │   │       ├── BKTree/
 │   │       ├── Rescorer/
 │   │       └── WordSpotting/
 │   │
-│   └── Streaming/
-│       ├── StreamingAsrEngine.swift
-│       ├── StreamingAsrEngineFactory.swift
-│       ├── ParakeetModelVariant.swift
-│       ├── RnntDecoder.swift
-│       ├── Tokenizer.swift
-│       ├── EOU/
-│       │   └── StreamingEouAsrManager.swift
-│       └── Nemotron/
-│           ├── NemotronChunkSize.swift
-│           ├── NemotronPipeline.swift
-│           ├── NemotronStreamingAsrManager.swift
-│           └── NemotronStreamingConfig.swift
+│   ├── Streaming/                       (true streaming engines)
+│   │   ├── StreamingAsrManager.swift
+│   │   ├── ParakeetModelVariant.swift
+│   │   ├── RnntDecoder.swift
+│   │   ├── Tokenizer.swift
+│   │   ├── EOU/
+│   │   │   └── StreamingEouAsrManager.swift
+│   │   └── Nemotron/
+│   │       ├── NemotronChunkSize.swift
+│   │       ├── StreamingNemotronAsrManager.swift
+│   │       ├── StreamingNemotronAsrManager+Pipeline.swift
+│   │       └── NemotronStreamingConfig.swift
+│   │
+│   └── TokenDeduplication/
+│       ├── SequenceMatch.swift
+│       └── SequenceMatcher.swift
 │
 └── Qwen3/
     ├── Qwen3AsrConfig.swift
@@ -113,6 +129,23 @@ ASR/
     ├── Qwen3StreamingManager.swift
     └── WhisperMelSpectrogram.swift
 ```
+
+### Algorithm-based organization: TDT/ vs CTC/
+
+Batch processing managers are now grouped by decoding algorithm within `SlidingWindow/`:
+
+**TDT (Token-and-Duration Transducer):**
+- `AsrManager` - Multilingual batch engine (en, es, fr, de, etc.)
+- `TdtJaManager` - Japanese-specific batch processing
+- `Decoder/` - Shared TDT infrastructure (beam search, BLAS indexing, hypothesis management)
+
+**CTC (Connectionist Temporal Classification):**
+- `CtcDecoder` - Greedy CTC decoding with optional LM
+- `CtcJaManager` - Japanese CTC batch processing
+- `CtcZhCnManager` - Chinese CTC batch processing
+- `ARPALanguageModel` - ARPA LM support for CTC decoding
+
+Both algorithm families use the sliding-window approach (large overlapping chunks with offline encoder), distinguishing them from the true streaming engines in `Streaming/`.
 
 ## What Changed and Why
 
@@ -137,7 +170,7 @@ The old `Streaming/` directory mixed two architecturally different approaches:
 
 `SlidingWindowAsrManager` (formerly `StreamingAsrManager`) processes audio in large overlapping windows using an offline encoder. The name "streaming" was misleading — it streams audio *in*, but the encoder sees each chunk in isolation.
 
-`StreamingEouAsrManager` and `NemotronStreamingAsrManager` are true streaming engines with cache-aware encoders that maintain state across chunks.
+`StreamingEouAsrManager` and `StreamingNemotronAsrManager` are true streaming engines with cache-aware encoders that maintain state across chunks.
 
 ### Renames
 
@@ -155,9 +188,8 @@ These features are only used by the sliding-window pipeline. CTC decoding runs o
 
 | File | Purpose |
 |---|---|
-| `StreamingAsrEngine.swift` | Actor protocol defining the interface for true streaming engines (`loadModels`, `appendAudio`, `processBufferedAudio`, `finish`, `reset`) |
-| `StreamingAsrEngineFactory.swift` | Factory that creates the right engine from a `StreamingModelVariant` |
-| `ParakeetModelVariant.swift` | Enum cataloguing all available streaming variants (EOU 160ms/320ms/1280ms, Nemotron 560ms/1120ms) with their repos and chunk sizes |
+| `StreamingAsrManager.swift` | Actor protocol defining the interface for true streaming engines (`loadModels`, `appendAudio`, `processBufferedAudio`, `finish`, `reset`) |
+| `ParakeetModelVariant.swift` | Enum cataloguing all available streaming variants (EOU 160ms/320ms/1280ms, Nemotron 560ms/1120ms) with their repos, chunk sizes, and `createManager()` factory method |
 
 ### `Streaming/` subdivided into `EOU/` and `Nemotron/`
 
@@ -195,7 +227,7 @@ Total genuinely identical code: ~4 lines across `appendAudio` and `getPartialTra
 | **Extra features** | EOU detection with debounce timer | None |
 | **State reset** | 6 cache arrays + EOU debounce state + RNNT decoder | 5 cache arrays + LSTM states from config shapes |
 
-A base class would have almost no real implementation to share — just abstract methods everywhere. The `StreamingAsrEngine` protocol is the right tool: it defines the contract without pretending these engines share internals.
+A base class would have almost no real implementation to share — just abstract methods everywhere. The `StreamingAsrManager` protocol is the right tool: it defines the contract without pretending these engines share internals.
 
 ## CLI and Test Mirrors
 
@@ -210,8 +242,10 @@ Sources/FluidAudioCLI/Commands/ASR/
 
 Tests/FluidAudioTests/ASR/
 ├── Parakeet/
-│   ├── Decoder/          (TDT decoder unit tests)
-│   ├── SlidingWindow/    (manager, session, CTC, custom vocab tests)
+│   ├── SlidingWindow/
+│   │   ├── TDT/          (AsrManager, ChunkProcessor, TdtJa, Decoder tests)
+│   │   ├── CTC/          (CtcJa, CtcZhCn tests)
+│   │   └── CustomVocabulary/ (BKTree, Rescorer, WordSpotting tests)
 │   └── Streaming/        (EOU, Nemotron, engine protocol tests)
 └── Qwen3/                (config, RoPE tests)
 ```

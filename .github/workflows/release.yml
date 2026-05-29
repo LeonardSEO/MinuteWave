@@ -37,15 +37,27 @@ jobs:
           APPLE_DEV_CERT_P12_BASE64: ${{ secrets.APPLE_DEV_CERT_P12_BASE64 }}
           APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
           APPLE_DEV_SIGNING_IDENTITY: ${{ secrets.APPLE_DEV_SIGNING_IDENTITY }}
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
           if [[ -n "${APPLE_DEV_CERT_P12_BASE64:-}" && -n "${APPLE_DEV_CERT_PASSWORD:-}" && -n "${APPLE_DEV_SIGNING_IDENTITY:-}" ]]; then
             echo "HAS_SIGNING_SECRETS=true" >> "$GITHUB_ENV"
             echo "SIGNING_IDENTITY=${APPLE_DEV_SIGNING_IDENTITY}" >> "$GITHUB_ENV"
+            echo "ENABLE_HARDENED_RUNTIME=1" >> "$GITHUB_ENV"
             echo "Signing with Apple Development identity from secrets."
           else
             echo "HAS_SIGNING_SECRETS=false" >> "$GITHUB_ENV"
             echo "SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "ENABLE_HARDENED_RUNTIME=0" >> "$GITHUB_ENV"
             echo "Signing secrets not configured; falling back to ad-hoc signing."
+          fi
+          if [[ -n "${APPLE_DEV_CERT_P12_BASE64:-}" && -n "${APPLE_DEV_CERT_PASSWORD:-}" && -n "${APPLE_DEV_SIGNING_IDENTITY:-}" && -n "${APPLE_NOTARY_APPLE_ID:-}" && -n "${APPLE_NOTARY_PASSWORD:-}" && -n "${APPLE_NOTARY_TEAM_ID:-}" ]]; then
+            echo "NOTARIZE_DMG=1" >> "$GITHUB_ENV"
+            echo "Notarization credentials detected; DMG will be submitted to Apple."
+          else
+            echo "NOTARIZE_DMG=0" >> "$GITHUB_ENV"
+            echo "Signing/notarization credentials not fully configured; DMG will not be notarized."
           fi
 
       - name: Import Apple Development certificate
@@ -64,16 +76,26 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_DEV_CERT_PASSWORD" -A -t cert -f pkcs12
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_DEV_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -t cert -f pkcs12
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
           security default-keychain -d user -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Build DMG
+        env:
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
           echo "Building DMG with signing identity: ${SIGNING_IDENTITY}"
-          SIGNING_IDENTITY="$SIGNING_IDENTITY" ./scripts/build_dmg.sh release
+          SIGNING_IDENTITY="$SIGNING_IDENTITY" \
+            ENABLE_HARDENED_RUNTIME="$ENABLE_HARDENED_RUNTIME" \
+            NOTARIZE_DMG="$NOTARIZE_DMG" \
+            APPLE_NOTARY_APPLE_ID="$APPLE_NOTARY_APPLE_ID" \
+            APPLE_NOTARY_PASSWORD="$APPLE_NOTARY_PASSWORD" \
+            APPLE_NOTARY_TEAM_ID="$APPLE_NOTARY_TEAM_ID" \
+            ./scripts/build_dmg.sh release
 
       - name: Verify app signature
         run: |
@@ -83,6 +105,15 @@ jobs:
             codesign -dv --verbose=4 .build/AppBundle/MinuteWave.app 2>&1 | grep -E "Signature="
           fi
           codesign --verify --deep --strict .build/AppBundle/MinuteWave.app
+          if [[ "${HAS_SIGNING_SECRETS}" == "true" ]]; then
+            codesign -d --entitlements :- .build/AppBundle/MinuteWave.app
+          fi
+
+      - name: Verify DMG notarization
+        if: env.NOTARIZE_DMG == '1'
+        run: |
+          xcrun stapler validate dist/MinuteWave-macOS.dmg
+          spctl -a -vv -t open --context context:primary-signature dist/MinuteWave-macOS.dmg
 
       - name: Generate SHA256
         run: |
@@ -100,5 +131,6 @@ jobs:
             ## MinuteWave release
 
             - macOS DMG build
-            - Uses Apple Development signing when secrets are configured; otherwise falls back to ad-hoc signing
-            - If Gatekeeper blocks launch, right-click the app and choose **Open**
+            - Uses configured Apple signing credentials when available; otherwise falls back to ad-hoc signing
+            - Notarizes and staples the DMG when notary secrets are configured
+            - If an unsigned build is blocked by Gatekeeper, right-click the app and choose **Open**

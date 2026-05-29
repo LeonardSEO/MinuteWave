@@ -19,7 +19,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 De app metadata en privacy-teksten staan in:
 
-- `/Users/leonard/Downloads/AI-note-taker/Sources/AINoteTakerApp/Resources/AppInfo.plist`
+- `Sources/AINoteTakerApp/Resources/AppInfo.plist`
 
 Belangrijk:
 
@@ -30,19 +30,18 @@ Belangrijk:
 ## 3) Bouw een stabiele app-bundle voor permissietests
 
 ```bash
-cd /Users/leonard/Downloads/AI-note-taker
 ./scripts/build_dev_app_bundle.sh
 ```
 
 Dit bouwt:
 
-- `/Users/leonard/Downloads/AI-note-taker/.build/AppBundle/MinuteWave.app`
+- `.build/AppBundle/MinuteWave.app`
 
 ## 4) Reset permissies en test opnieuw
 
 ```bash
 ./scripts/reset_tcc_permissions.sh
-open "/Users/leonard/Downloads/AI-note-taker/.build/AppBundle/MinuteWave.app"
+open ".build/AppBundle/MinuteWave.app"
 ```
 
 Daarna in macOS Settings:

@@ -6,15 +6,63 @@ How the Swift code generates speech from text.
 
 | File | Role |
 |------|------|
-| `PocketTtsManager.swift` | Public API — `initialize()`, `synthesize()`, `synthesizeToFile()`, `cloneVoice()` |
+| `PocketTtsManager.swift` | Public API — `initialize()`, `synthesize()`, `synthesizeToFile()`, `makeSession()`, `cloneVoice()` |
 | `PocketTtsModelStore.swift` | Loads and stores the 4 CoreML models + constants + voice data |
 | `PocketTtsVoiceCloner.swift` | Voice cloning — converts audio to voice conditioning embeddings |
 | `PocketTtsSynthesizer.swift` | Main synthesis loop — chunking, prefill, generation, output |
-| `PocketTtsSynthesizer+KVCache.swift` | KV cache state, `prefillKVCache()`, `runCondStep()`, `runFlowLMStep()` |
+| `PocketTtsSession.swift` | Session actor — persistent voice KV cache, enqueue/finish/cancel API |
+| `PocketTtsSynthesizer+KVCache.swift` | KV cache state, `prefillKVCacheVoice()`, `prefillKVCacheText()`, `cloneKVCacheState()` |
 | `PocketTtsSynthesizer+Flow.swift` | Flow decoder loop, `denormalize()`, `quantize()`, SeededRNG |
 | `PocketTtsSynthesizer+Mimi.swift` | Mimi decoder state, `runMimiDecoder()`, `loadMimiInitialState()` |
 | `PocketTtsConstantsLoader.swift` | Loads binary constants (embeddings, tokenizer, quantizer weights) |
 | `PocketTtsConstants.swift` | All numeric constants (dimensions, thresholds, etc.) |
+
+## Model Files & Precision
+
+The four CoreML submodels (plus the optional Mimi encoder) and their
+auxiliary asset directories. All paths are relative to
+[`FluidInference/pocket-tts-coreml`](https://huggingface.co/FluidInference/pocket-tts-coreml)
+on HuggingFace; sizes are for the English language pack.
+
+| File | Precision | Size | HF path | Role |
+|------|-----------|------|---------|------|
+| `cond_step.mlmodelc` | fp16 | 254.3 MB | `v2/<lang>/cond_step.mlmodelc` | KV-cache prefill — runs once per chunk over voice + text tokens (~141 calls); writes the 6-layer KV cache that FlowLM consumes during generation |
+| `flowlm_step.mlmodelc` | fp16 | 290.5 MB | `v2/<lang>/flowlm_step.mlmodelc` | Autoregressive transformer — runs **once per audio frame** during generation; outputs a `[1, 1024]` hidden state + EOS logit per step. Loaded when `precision: .fp16` (default) |
+| `flowlm_stepv2.mlmodelc` | int8 attn + FFN linears, fp16 elsewhere | 73.5 MB | `v2/<lang>/flowlm_stepv2.mlmodelc` | Drop-in replacement for `flowlm_step` when `precision: .int8` — same I/O signature, ~4× smaller. Quantization recipe per [kyutai-labs/pocket-tts#147](https://github.com/kyutai-labs/pocket-tts/pull/147) |
+| `flow_decoder.mlmodelc` | fp16 | 37.3 MB | `v2/<lang>/flow_decoder.mlmodelc` | LSD flow-matching decoder — runs an 8-step Euler loop per audio frame (`latent += velocity · dt`); turns transformer output into a 32-dim audio latent |
+| `mimi_decoder.mlmodelc` | fp16 (outputs explicitly fp16) | 40.0 MB | `v2/<lang>/mimi_decoder.mlmodelc` | Mimi VAE audio decoder — runs once per audio frame, takes a 512-dim quantized vector and produces 1920 PCM samples (24 kHz). Maintains 23 streaming-state tensors fed back as next-frame input |
+| `mimi_encoder.mlmodelc` | fp16 | optional | `mimi_encoder.mlmodelc` *(repo root)* | **Voice cloning only.** Language-agnostic; lives at the repo root, not under `v2/<lang>/`. Downloaded separately on first `cloneVoice(...)` call |
+| `constants_bin/` | binary tensors | 144.2 MB | `v2/<lang>/constants_bin/` | Token embedding table, SentencePiece tokenizer, denormalize/quantize mean+std, per-voice prompts (`alba.safetensors`, etc.) |
+| `constants/` | metadata sidecar | 16.7 MB | `v2/<lang>/constants/` | Auxiliary constants referenced by `PocketTtsConstantsLoader` |
+
+`<lang>` is one of: `english`, `french_24l`, `german`, `german_24l`,
+`italian`, `italian_24l`, `portuguese`, `portuguese_24l`, `spanish`,
+`spanish_24l`.
+
+### Totals (English, on disk)
+
+| Configuration | Total |
+|---------------|-------|
+| `precision: .fp16` (default) | 766.3 MB |
+| `precision: .int8` | 549.3 MB |
+| **int8 savings vs fp16** | **−217 MB (28%)** |
+
+The `v2/<lang>/` HF directory ships **both** flowlm variants, so a fresh
+download pulls the unused one too. `PocketTtsResourceDownloader` deletes
+the unused FlowLM `.mlmodelc` and `.mlpackage` directories after download
+completes so only the requested precision occupies disk long-term.
+
+### Why only `flowlm_step` is quantized
+
+The four submodels have different sensitivity to quantization. Only the
+FlowLM transformer is published in an int8 variant upstream:
+
+| Submodel | Quantized? | Why |
+|----------|------------|-----|
+| `cond_step` | No | One-shot prefill; conditioning errors propagate through the entire utterance |
+| `flowlm_step` | **Yes** | Per-frame transformer with causal attention; quantization error stays bounded per frame, doesn't compound. Largest file — best size-to-risk trade |
+| `flow_decoder` | No | 8-step Euler loop where each step's error feeds the next; small file (37 MB) makes savings marginal anyway |
+| `mimi_decoder` | No | Autoregressive feedback loop where 23 streaming-state tensors carry across frames; errors compound frame-over-frame |
 
 ## Call Flow
 
@@ -144,6 +192,29 @@ fluidaudio tts "Hello world" --backend pocket --voice-file my_voice.bin
 - The `mimi_encoder.mlmodelc` model is downloaded automatically on first use
 - Supports any audio format that AVFoundation can read
 
+### Cloning Across Languages
+
+The Mimi encoder is language-agnostic — voice cloning produces a generic
+acoustic embedding that any language pack's `cond_step` model can consume.
+You can:
+
+- Clone a voice once and reuse the same `PocketTtsVoiceData` across managers
+  configured with different languages.
+- Clone a voice with a Spanish-only manager without pulling in the English
+  language pack — only the encoder subtree is downloaded.
+
+```swift
+// Clone with a Spanish manager
+let esManager = PocketTtsManager(language: .spanish)
+try await esManager.initialize()
+let voiceData = try await esManager.cloneVoice(from: speakerAudioURL)
+
+// Use the same cloned voice with a French manager
+let frManager = PocketTtsManager(language: .french24L)
+try await frManager.initialize()
+let frAudio = try await frManager.synthesize(text: "Bonjour", voiceData: voiceData)
+```
+
 ## Pipeline and Pronunciation Control
 
 ```
@@ -154,7 +225,7 @@ text → SentencePiece tokenizer → subword tokens → PocketTTS model → audi
                                           (no external control)
 ```
 
-Unlike Kokoro which uses a CoreML G2P model to convert text to IPA phonemes **before** the model, PocketTTS feeds raw text tokens directly into the neural network. The model learned text→pronunciation mappings during training — there is no phoneme stage to intercept.
+Unlike KokoroAne / StyleTTS2 which run a CoreML G2P model to convert text to IPA phonemes **before** the model, PocketTTS feeds raw text tokens directly into the neural network. The model learned text→pronunciation mappings during training — there is no phoneme stage to intercept.
 
 ### Feature Support
 
@@ -180,7 +251,96 @@ Text-level preprocessing that runs **before** the SentencePiece tokenizer:
 - **Custom lexicon** — no phoneme stage to apply word → IPA mappings
 - **Fine-grained pronunciation control** — the model decides pronunciation from text tokens alone
 
-See [Kokoro.md](Kokoro.md) if you need pronunciation control.
+See [KokoroAne.md](KokoroAne.md) or [StyleTTS2.md](StyleTTS2.md) if you need pronunciation control.
+
+## Session API
+
+For streaming input or long-running low-latency sessions, `makeSession()`
+performs the voice prefill once, then each enqueued utterance only prefills
+text tokens. Mimi state persists across utterances for seamless audio.
+
+```swift
+let session = try await manager.makeSession(voice: "alba")
+session.enqueue("Hello there.")
+session.enqueue("How are you doing today?")
+session.finish()
+for try await frame in session.frames {
+    playAudio(frame.samples)
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `manager.makeSession(voice:temperature:seed:)` | Create session with named voice |
+| `manager.makeSession(voiceData:temperature:seed:)` | Create session with cloned voice |
+| `session.enqueue(_ text:)` | Add text (non-async, safe from any context) |
+| `session.finish()` | End the session and complete the frames stream |
+| `session.cancel()` | Stop generation immediately |
+| `session.frames` | `AsyncThrowingStream<AudioFrame, Error>` |
+
+| Scenario | API |
+|----------|-----|
+| One-shot synthesis | `synthesize()` |
+| Streaming playback | `synthesizeStreaming()` |
+| Streaming text or custom chunking | `makeSession()` |
+
+## Languages
+
+PocketTTS ships with multiple language packs converted from
+[kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts). Pick the one
+that matches your input text — there is no automatic language detection.
+
+| ID | Layers | HF Path |
+|----|--------|---------|
+| `english` | 6 | repo root (legacy layout) |
+| `german` | 6 | `v2/german/` |
+| `german_24l` | 24 | `v2/german_24l/` |
+| `italian` | 6 | `v2/italian/` |
+| `italian_24l` | 24 | `v2/italian_24l/` |
+| `portuguese` | 6 | `v2/portuguese/` |
+| `portuguese_24l` | 24 | `v2/portuguese_24l/` |
+| `spanish` | 6 | `v2/spanish/` |
+| `spanish_24l` | 24 | `v2/spanish_24l/` |
+| `french_24l` | 24 | `v2/french_24l/` |
+
+Notes:
+- French only ships a 24-layer pack upstream (no 6-layer variant).
+- 24-layer packs are higher quality but slower and larger.
+- 26 voice names are shared across every language pack, but the underlying
+  acoustic embeddings are per-language. The set is 21 English-trained
+  "literary" voices (alba, anna, azelma, bill_boerst, caro_davy, charles,
+  cosette, eponine, eve, fantine, george, jane, javert, jean, marius, mary,
+  michael, paul, peter_yearsley, stuart_bell, vera) plus 5 voices recorded
+  natively in their target language: `estelle` (French), `lola` (Spanish),
+  `juergen` (German), `rafael` (Portuguese), `giovanni` (Italian). The
+  native-language voices generally produce the most idiomatic prosody for
+  their matching language pack.
+- Mimi encoder weights (used for voice cloning) are language-agnostic and
+  always live at the repo root.
+
+### Swift API
+
+```swift
+let manager = PocketTtsManager(language: .spanish)
+try await manager.initialize()
+let audio = try await manager.synthesize(text: "Hola mundo")
+```
+
+`PocketTtsManager.language` is immutable per instance. To support multiple
+languages in one app, instantiate one manager per language.
+
+### CLI Usage
+
+```bash
+# Default (English)
+fluidaudio tts "Hello world" --backend pocket --output en.wav
+
+# Spanish (6L)
+fluidaudio tts "Hola mundo" --backend pocket --language spanish --output es.wav
+
+# French (24L only)
+fluidaudio tts "Bonjour" --backend pocket --language french_24l --output fr.wav
+```
 
 ## Usage
 

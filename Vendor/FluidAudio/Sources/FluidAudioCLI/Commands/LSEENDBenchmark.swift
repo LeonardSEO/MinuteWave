@@ -5,6 +5,7 @@ import Foundation
 /// LS-EEND diarization benchmark for evaluating performance on standard corpora
 enum LSEENDBenchmark {
     private static let logger = AppLogger(category: "LSEENDBench")
+    private static let frameStepForDER: Double = 0.01
 
     typealias Dataset = DiarizationBenchmarkUtils.Dataset
     typealias BenchmarkResult = DiarizationBenchmarkUtils.BenchmarkResult
@@ -20,12 +21,14 @@ enum LSEENDBenchmark {
 
             Options:
                 --dataset <name>         Dataset to use: ami, voxconverse, callhome (default: ami)
-                --variant <name>         Model variant: ami, callhome, dihard2, dihard3 (default: dihard3)
+                --ami-split <name>       AMI split: dev, test, train (default: test)
+                --variant <name>         Model variant: ami, callhome, dihard2, dihard3 (default: ami)
+                --step-size <name>       Model step size: 100ms, 200ms, 300ms, 400ms, 500ms (default: 500ms)
                 --single-file <name>     Process a specific meeting (e.g., ES2004a)
                 --max-files <n>          Maximum number of files to process
                 --threshold <value>      Speaker activity threshold (default: 0.5)
                 --median-width <value>   Median filter width for post-processing (default: 1)
-                --collar <value>         Collar duration in seconds (default: 0.25)
+                --collar <value>         Collar duration in seconds (default: 0.0 for AMI, 0.25 otherwise)
                 --onset <value>          Onset threshold for speech detection (default: 0.5)
                 --offset <value>         Offset threshold for speech detection (default: 0.5)
                 --pad-onset <value>      Padding before speech segments in seconds
@@ -46,8 +49,8 @@ enum LSEENDBenchmark {
                 # Full AMI benchmark with auto-download
                 fluidaudio lseend-benchmark --auto-download --output results.json
 
-                # Benchmark with CALLHOME variant on CALLHOME dataset
-                fluidaudio lseend-benchmark --dataset callhome --variant callhome
+                # Benchmark with AMI 500ms model
+                fluidaudio lseend-benchmark --variant ami --step-size 500ms
             """)
     }
 
@@ -58,6 +61,7 @@ enum LSEENDBenchmark {
         var threshold: Float = 0.5
         var medianWidth: Int = 1
         var collarSeconds: Double = 0.25
+        var collarWasProvided = false
         var outputFile: String?
         var verbose = false
         var autoDownload = false
@@ -72,7 +76,9 @@ enum LSEENDBenchmark {
         var progressFile: String = ".lseend_progress.json"
         var resumeFromProgress = false
         var dataset: Dataset = .ami
-        var variant: LSEENDVariant = .dihard3
+        var amiSplit: DiarizationBenchmarkUtils.AMISplit = .test
+        var variant: LSEENDVariant = .ami
+        var stepSize: LSEENDStepSize = .step500ms
 
         var i = 0
         while i < arguments.count {
@@ -83,6 +89,15 @@ enum LSEENDBenchmark {
                         dataset = d
                     } else {
                         print("Unknown dataset: \(arguments[i + 1]). Using ami.")
+                    }
+                    i += 1
+                }
+            case "--ami-split":
+                if i + 1 < arguments.count {
+                    if let split = DiarizationBenchmarkUtils.AMISplit(rawValue: arguments[i + 1].lowercased()) {
+                        amiSplit = split
+                    } else {
+                        print("Unknown AMI split: \(arguments[i + 1]). Using test.")
                     }
                     i += 1
                 }
@@ -100,6 +115,24 @@ enum LSEENDBenchmark {
                         variant = .dihard3
                     default:
                         print("Unknown variant: \(arguments[i + 1]). Using dihard3.")
+                    }
+                    i += 1
+                }
+            case "--step-size":
+                if i + 1 < arguments.count {
+                    switch arguments[i + 1].lowercased() {
+                    case "100", "100ms":
+                        stepSize = .step100ms
+                    case "200", "200ms":
+                        stepSize = .step200ms
+                    case "300", "300ms":
+                        stepSize = .step300ms
+                    case "400", "400ms":
+                        stepSize = .step400ms
+                    case "500", "500ms":
+                        stepSize = .step500ms
+                    default:
+                        print("Unknown step size: \(arguments[i + 1]). Using 500ms.")
                     }
                     i += 1
                 }
@@ -126,6 +159,7 @@ enum LSEENDBenchmark {
             case "--collar":
                 if i + 1 < arguments.count {
                     collarSeconds = Double(arguments[i + 1]) ?? 0.25
+                    collarWasProvided = true
                     i += 1
                 }
             case "--output":
@@ -183,10 +217,18 @@ enum LSEENDBenchmark {
             i += 1
         }
 
+        if dataset == .ami && !collarWasProvided {
+            collarSeconds = 0.0
+        }
+
         print("Starting LS-EEND Benchmark")
         fflush(stdout)
         print("   Dataset: \(dataset.rawValue)")
-        print("   Variant: \(variant.rawValue)")
+        if dataset == .ami {
+            print("   AMI split: \(amiSplit.rawValue)")
+        }
+        print("   Variant: \(variant.description)")
+        print("   Step size: \(stepSize.description)")
         print("   Threshold: \(threshold)")
         print("   Median width: \(medianWidth)")
         print("   Collar: \(collarSeconds)s")
@@ -194,18 +236,57 @@ enum LSEENDBenchmark {
         // Download dataset if needed
         if autoDownload && dataset == .ami {
             print("Downloading AMI dataset if needed...")
+            let meetingsToDownload =
+                singleFile.map { [$0] } ?? DiarizationBenchmarkUtils.getAMIMeetings(split: amiSplit)
             await DatasetDownloader.downloadAMIDataset(
                 variant: .sdm,
                 force: false,
-                singleFile: singleFile
+                singleFile: singleFile,
+                meetingIds: meetingsToDownload
             )
             await DatasetDownloader.downloadAMIAnnotations(force: false)
+        }
+
+        let amiSplitDirectory: URL?
+        if dataset == .ami {
+            let splitDirectory = AMIKaldiData.splitDirectory(split: amiSplit)
+
+            do {
+                if autoDownload {
+                    try AMIKaldiData.ensureSplitExists(split: amiSplit)
+                } else if !AMIKaldiData.splitExists(split: amiSplit) {
+                    print("AMI Kaldi split not found at \(splitDirectory.path)")
+                    print(
+                        "Run `fluidaudio lseend-benchmark --auto-download` to build Datasets/ami/mhs/data/\(amiSplit.rawValue)."
+                    )
+                    return
+                }
+            } catch {
+                print("Failed to prepare AMI Kaldi data: \(error)")
+                return
+            }
+
+            amiSplitDirectory = splitDirectory
+        } else {
+            amiSplitDirectory = nil
         }
 
         // Get list of files to process
         let filesToProcess: [String]
         if let meeting = singleFile {
             filesToProcess = [meeting]
+        } else if dataset == .ami {
+            guard let amiSplitDirectory else {
+                print("AMI Kaldi split directory was not initialized.")
+                return
+            }
+
+            do {
+                filesToProcess = try AMIKaldiData.recordingIDs(in: amiSplitDirectory, maxFiles: maxFiles)
+            } catch {
+                print("Failed to enumerate AMI Kaldi recordings: \(error)")
+                return
+            }
         } else {
             filesToProcess = DiarizationBenchmarkUtils.getFiles(for: dataset, maxFiles: maxFiles)
         }
@@ -251,10 +332,21 @@ enum LSEENDBenchmark {
         if let v = minDurationOn { timelineConfig.minDurationOn = v }
         if let v = minDurationOff { timelineConfig.minDurationOff = v }
 
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly, timelineConfig: timelineConfig)
+        let diarizer: LSEENDDiarizer
 
         do {
-            try await diarizer.initialize(variant: variant)
+            let model = try await LSEENDModel.loadFromHuggingFace(
+                variant: variant,
+                stepSize: stepSize,
+                computeUnits: .cpuOnly
+            )
+            diarizer = try LSEENDDiarizer(model: model)
+            diarizer.timeline = DiarizerTimeline(
+                config: configuredTimelineConfig(
+                    base: timelineConfig,
+                    diarizer: diarizer
+                )
+            )
         } catch {
             print("Failed to initialize LS-EEND: \(error)")
             return
@@ -292,6 +384,7 @@ enum LSEENDBenchmark {
             let result = await processMeeting(
                 meetingName: meetingName,
                 dataset: dataset,
+                amiSplitDirectory: amiSplitDirectory,
                 diarizer: diarizer,
                 modelLoadTime: modelLoadTime,
                 threshold: threshold,
@@ -336,6 +429,7 @@ enum LSEENDBenchmark {
     private static func processMeeting(
         meetingName: String,
         dataset: Dataset,
+        amiSplitDirectory: URL?,
         diarizer: LSEENDDiarizer,
         modelLoadTime: Double,
         threshold: Float,
@@ -345,18 +439,37 @@ enum LSEENDBenchmark {
         numSpeakers: Int,
         verbose: Bool
     ) async -> BenchmarkResult? {
-        let audioPath = DiarizationBenchmarkUtils.getAudioPath(for: meetingName, dataset: dataset)
-        guard FileManager.default.fileExists(atPath: audioPath) else {
-            print("Audio file not found: \(audioPath)")
-            fflush(stdout)
-            return nil
-        }
-
         do {
+            let audioPath: String
+            if dataset == .ami {
+                guard let amiSplitDirectory else {
+                    print("AMI Kaldi split directory was not initialized.")
+                    return nil
+                }
+                guard let path = try AMIKaldiData.audioPath(for: meetingName, in: amiSplitDirectory) else {
+                    print("AMI Kaldi wav.scp has no entry for \(meetingName)")
+                    return nil
+                }
+                audioPath = path
+            } else {
+                audioPath = DiarizationBenchmarkUtils.getAudioPath(for: meetingName, dataset: dataset)
+            }
+
+            guard FileManager.default.fileExists(atPath: audioPath) else {
+                print("Audio file not found: \(audioPath)")
+                fflush(stdout)
+                return nil
+            }
+
             // Load and process audio
             let audioURL = URL(fileURLWithPath: audioPath)
             let startTime = Date()
-            let timeline = try diarizer.processComplete(audioFileURL: audioURL)
+            let timeline = try diarizer.processComplete(
+                audioFileURL: audioURL,
+                keepingEnrolledSpeakers: nil,
+                finalizeOnCompletion: true,
+                progressCallback: nil
+            )
             let processingTime = Date().timeIntervalSince(startTime)
 
             let duration = timeline.finalizedDuration
@@ -369,89 +482,56 @@ enum LSEENDBenchmark {
                 print("   Total frames: \(numFrames)")
             }
 
-            // Load ground truth RTTM (or fall back to AMI XML annotations)
-            let rttmEntries: [LSEENDRTTMEntry]
-            let rttmSpeakers: [String]
+            let referenceSegments: [DERSpeakerSegment]
+            let groundTruthSpeakers: Int
 
-            let rttmURL = DiarizationBenchmarkUtils.getRTTMURL(for: meetingName, dataset: dataset)
-            if let rttmURL = rttmURL, FileManager.default.fileExists(atPath: rttmURL.path) {
-                let parsed = try LSEENDEvaluation.parseRTTM(url: rttmURL)
-                rttmEntries = parsed.entries
-                rttmSpeakers = parsed.speakers
-            } else if dataset == .ami {
-                // Fall back to AMI XML annotations (same as SortformerBenchmark)
-                print("   [RTTM] No RTTM file, falling back to AMI annotations")
-                let groundTruth = await AMIParser.loadAMIGroundTruth(
+            if dataset == .ami {
+                print("   [REF] Using AMI word-aligned annotations")
+                referenceSegments = await AMIParser.loadWordAlignedDERReference(
                     for: meetingName,
                     duration: duration
                 )
-                guard !groundTruth.isEmpty else {
-                    print("No ground truth found for \(meetingName)")
-                    return nil
-                }
-                // Convert TimedSpeakerSegment to LSEENDRTTMEntry
-                var speakers: [String] = []
-                var entries: [LSEENDRTTMEntry] = []
-                for segment in groundTruth {
-                    if !speakers.contains(segment.speakerId) {
-                        speakers.append(segment.speakerId)
-                    }
-                    entries.append(
-                        LSEENDRTTMEntry(
-                            recordingID: meetingName,
-                            start: Double(segment.startTimeSeconds),
-                            duration: Double(segment.endTimeSeconds - segment.startTimeSeconds),
-                            speaker: segment.speakerId
-                        )
+                groundTruthSpeakers = Set(referenceSegments.map(\.speaker)).count
+            } else if let rttmURL = DiarizationBenchmarkUtils.getRTTMURL(for: meetingName, dataset: dataset),
+                FileManager.default.fileExists(atPath: rttmURL.path)
+            {
+                let groundTruth = try RTTMParser.loadSegments(from: rttmURL.path)
+                referenceSegments = groundTruth.map {
+                    DERSpeakerSegment(
+                        speaker: $0.speakerId,
+                        start: Double($0.startTimeSeconds),
+                        end: Double($0.endTimeSeconds)
                     )
                 }
-                rttmEntries = entries
-                rttmSpeakers = speakers
+                groundTruthSpeakers = Set(groundTruth.map(\.speakerId)).count
             } else {
                 print("No RTTM ground truth found for \(meetingName)")
                 return nil
             }
 
-            let referenceBinary = LSEENDEvaluation.rttmToFrameMatrix(
-                entries: rttmEntries,
-                speakers: rttmSpeakers,
-                numFrames: numFrames,
-                frameRate: frameHz
+            print(
+                "   [REF] Loaded \(referenceSegments.count) segments, speakers: \(groundTruthSpeakers)"
             )
 
-            print("   [RTTM] Loaded \(rttmEntries.count) segments, speakers: \(rttmSpeakers)")
-
-            // Build probability matrix from timeline predictions
-            let predictions = timeline.finalizedPredictions
-            let probMatrix = LSEENDMatrix(
-                validatingRows: numFrames,
-                columns: numSpeakers,
-                values: predictions
-            )
-
-            // Compute DER using the built-in evaluation
-            let settings = LSEENDEvaluationSettings(
+            let hypothesisSegments = timelineToDERSegments(
+                timeline,
+                numSpeakers: numSpeakers,
                 threshold: threshold,
-                medianWidth: medianWidth,
-                collarSeconds: collarSeconds,
-                frameRate: frameHz
-            )
-            let evalResult = LSEENDEvaluation.computeDER(
-                probabilities: probMatrix,
-                referenceBinary: referenceBinary,
-                settings: settings
+                medianWidth: medianWidth
             )
 
+            let evalResult = DiarizationDER.compute(
+                ref: referenceSegments,
+                hyp: hypothesisSegments,
+                frameStep: frameStepForDER,
+                collar: collarSeconds
+            )
+
+            let totalRefSpeech = max(evalResult.totalRefSpeech, .leastNonzeroMagnitude)
             let derPercent = Float(evalResult.der * 100)
-            let missPercent =
-                evalResult.speakerScored > 0
-                ? Float(evalResult.speakerMiss / evalResult.speakerScored * 100) : 0
-            let faPercent =
-                evalResult.speakerScored > 0
-                ? Float(evalResult.speakerFalseAlarm / evalResult.speakerScored * 100) : 0
-            let sePercent =
-                evalResult.speakerScored > 0
-                ? Float(evalResult.speakerError / evalResult.speakerScored * 100) : 0
+            let missPercent = Float(evalResult.miss / totalRefSpeech * 100)
+            let faPercent = Float(evalResult.falseAlarm / totalRefSpeech * 100)
+            let sePercent = Float(evalResult.confusion / totalRefSpeech * 100)
 
             print(
                 "   DER breakdown: miss=\(String(format: "%.1f", missPercent))%, "
@@ -478,7 +558,7 @@ enum LSEENDBenchmark {
                 processingTime: processingTime,
                 totalFrames: numFrames,
                 detectedSpeakers: detectedSpeakerIndices.count,
-                groundTruthSpeakers: rttmSpeakers.count,
+                groundTruthSpeakers: groundTruthSpeakers,
                 modelLoadTime: modelLoadTime,
                 audioLoadTime: nil
             )
@@ -487,6 +567,111 @@ enum LSEENDBenchmark {
             print("Error processing \(meetingName): \(error)")
             return nil
         }
+    }
+
+    private static func configuredTimelineConfig(
+        base: DiarizerTimelineConfig,
+        diarizer: LSEENDDiarizer
+    ) -> DiarizerTimelineConfig {
+        var config = base
+        config.numSpeakers = diarizer.numSpeakers ?? config.numSpeakers
+        if let frameHz = diarizer.modelFrameHz {
+            config.frameDurationSeconds = Float(1.0 / frameHz)
+        }
+        return config
+    }
+
+    private static func timelineToDERSegments(
+        _ timeline: DiarizerTimeline,
+        numSpeakers: Int,
+        threshold: Float,
+        medianWidth: Int
+    ) -> [DERSpeakerSegment] {
+        let binary = probabilitiesToBinary(
+            timeline.finalizedPredictions,
+            numFrames: timeline.numFinalizedFrames,
+            numSpeakers: numSpeakers,
+            threshold: threshold,
+            medianWidth: medianWidth
+        )
+        return binaryToSegments(
+            binary,
+            numFrames: timeline.numFinalizedFrames,
+            numSpeakers: numSpeakers,
+            frameStep: Double(timeline.config.frameDurationSeconds)
+        )
+    }
+
+    private static func probabilitiesToBinary(
+        _ predictions: [Float],
+        numFrames: Int,
+        numSpeakers: Int,
+        threshold: Float,
+        medianWidth: Int
+    ) -> [Bool] {
+        var out = [Bool](repeating: false, count: numFrames * numSpeakers)
+        for frame in 0..<numFrames {
+            for speaker in 0..<numSpeakers {
+                let index = frame * numSpeakers + speaker
+                out[index] = index < predictions.count && predictions[index] > threshold
+            }
+        }
+
+        guard medianWidth > 1 else { return out }
+        var filtered = out
+        let halfWindow = medianWidth / 2
+        for speaker in 0..<numSpeakers {
+            for frame in 0..<numFrames {
+                let start = max(0, frame - halfWindow)
+                let end = min(numFrames, frame + halfWindow + 1)
+                var active = 0
+                for candidate in start..<end where out[candidate * numSpeakers + speaker] {
+                    active += 1
+                }
+                filtered[frame * numSpeakers + speaker] = active * 2 >= (end - start)
+            }
+        }
+        return filtered
+    }
+
+    private static func binaryToSegments(
+        _ binary: [Bool],
+        numFrames: Int,
+        numSpeakers: Int,
+        frameStep: Double
+    ) -> [DERSpeakerSegment] {
+        var segments: [DERSpeakerSegment] = []
+        for speaker in 0..<numSpeakers {
+            var runStart: Int? = nil
+            for frame in 0..<numFrames {
+                let isActive = binary[frame * numSpeakers + speaker]
+                if isActive {
+                    runStart = runStart ?? frame
+                    continue
+                }
+                if let startFrame = runStart {
+                    segments.append(
+                        DERSpeakerSegment(
+                            speaker: String(speaker),
+                            start: Double(startFrame) * frameStep,
+                            end: Double(frame) * frameStep
+                        )
+                    )
+                    runStart = nil
+                }
+            }
+
+            if let startFrame = runStart {
+                segments.append(
+                    DERSpeakerSegment(
+                        speaker: String(speaker),
+                        start: Double(startFrame) * frameStep,
+                        end: Double(numFrames) * frameStep
+                    )
+                )
+            }
+        }
+        return segments
     }
 
 }

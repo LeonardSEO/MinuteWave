@@ -9,6 +9,10 @@ public struct ASRConfig: Sendable {
     /// Encoder hidden dimension (1024 for 0.6B, 512 for 110m)
     public let encoderHiddenSize: Int
 
+    /// Number of long-form chunks to transcribe concurrently.
+    /// Applies only to stateless chunked transcription paths.
+    public let parallelChunkConcurrency: Int
+
     /// Enable streaming mode for large files to reduce memory usage.
     /// When enabled, files larger than `streamingThreshold` samples will be processed
     /// using streaming to maintain constant memory usage.
@@ -19,20 +23,64 @@ public struct ASRConfig: Sendable {
     /// Default: 480,000 samples (~30 seconds at 16kHz)
     public let streamingThreshold: Int
 
+    /// Enable the 80ms (1 encoder frame) mel-context prepend on non-first
+    /// chunks in the long-form batch path. Added in PR #264 to fix
+    /// all-blank predictions at chunk boundaries on long English audio.
+    ///
+    /// Issue #594 root cause: on `parakeet-tdt-0.6b-v3-coreml` multilingual
+    /// long-form audio, the 80ms prepend can shift the FastConformer encoder's
+    /// first-frame distribution enough that the SOS-primed TDT decoder drifts
+    /// back to its English-biased prior. Disabling this flag (`false`) lets
+    /// the v3 batch path use acoustic warmup plus silence-aligned starts while
+    /// keeping parallel chunk processing.
+    ///
+    /// Default `true` preserves PR #264's blank-prediction fix on English.
+    /// Set to `false` for v3 multilingual long-form batch transcription.
+    public let melChunkContext: Bool
+
+    /// Opt-in dual-decode arbitration for the v3 + no-mel batch path.
+    /// When `true`, the first non-trivial chunks of each file are probed
+    /// with three strategies: silence-aligned without warmup, silence-
+    /// aligned with a 7-frame warmup prefix, and regular fixed-stride
+    /// chunking. The file then commits to the winning path and decodes the
+    /// remaining chunks single-path with that choice. Probe ties go to the
+    /// warmup-free path (the content-safer default).
+    ///
+    /// Per-file commitment (rather than per-chunk arbitration) eliminates
+    /// the inter-path stitching artifacts the LCS+midpoint merger produces
+    /// when adjacent chunks are decoded under different warmup conditions
+    /// — observed as mid-word duplicates and dropped clauses on
+    /// heterogeneous-confidence files like long Spanish narration.
+    ///
+    /// Mechanism is language-agnostic (confidence-based; no text inspection,
+    /// no vocabulary/script/token filtering, no language hints).
+    ///
+    /// Default `false`. Off-by-default because the wins are quality-tier
+    /// rather than correctness-tier, and the probe adds a modest constant
+    /// overhead (≈1.1–1.5× depending on file length) over the regular
+    /// `melChunkContext = false` path.
+    public let dualDecodeArbitration: Bool
+
     public static let `default` = ASRConfig()
 
     public init(
         sampleRate: Int = 16000,
         tdtConfig: TdtConfig = .default,
         encoderHiddenSize: Int = ASRConstants.encoderHiddenSize,
+        parallelChunkConcurrency: Int = 4,
         streamingEnabled: Bool = true,
-        streamingThreshold: Int = 480_000
+        streamingThreshold: Int = 480_000,
+        melChunkContext: Bool = true,
+        dualDecodeArbitration: Bool = false
     ) {
         self.sampleRate = sampleRate
         self.tdtConfig = tdtConfig
         self.encoderHiddenSize = encoderHiddenSize
+        self.parallelChunkConcurrency = max(1, parallelChunkConcurrency)
         self.streamingEnabled = streamingEnabled
         self.streamingThreshold = streamingThreshold
+        self.melChunkContext = melChunkContext
+        self.dualDecodeArbitration = dualDecodeArbitration
     }
 }
 
@@ -127,7 +175,7 @@ public enum ASRError: Error, LocalizedError {
         case .notInitialized:
             return "AsrManager not initialized. Call initialize() first."
         case .invalidAudioData:
-            return "Invalid audio data provided. Must be at least 1 second of 16kHz audio."
+            return "Invalid audio data provided. Must be at least 300ms of 16kHz audio."
         case .modelLoadFailed:
             return "Failed to load Parakeet CoreML models."
         case .processingFailed(let message):

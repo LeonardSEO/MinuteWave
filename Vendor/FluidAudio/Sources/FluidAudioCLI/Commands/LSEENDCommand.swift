@@ -17,7 +17,8 @@ enum LSEENDCommand {
 
         let audioFile = arguments[0]
         var outputFile: String?
-        var variant: LSEENDVariant = .dihard3
+        var variant: LSEENDVariant = .ami
+        var stepSize: LSEENDStepSize = .step500ms
         var threshold: Float = 0.5
 
         // Post-processing parameters
@@ -51,6 +52,24 @@ enum LSEENDCommand {
                         variant = .dihard3
                     default:
                         logger.warning("Unknown variant: \(arguments[i + 1]), using dihard3")
+                    }
+                    i += 1
+                }
+            case "--step-size":
+                if i + 1 < arguments.count {
+                    switch arguments[i + 1].lowercased() {
+                    case "100", "100ms":
+                        stepSize = .step100ms
+                    case "200", "200ms":
+                        stepSize = .step200ms
+                    case "300", "300ms":
+                        stepSize = .step300ms
+                    case "400", "400ms":
+                        stepSize = .step400ms
+                    case "500", "500ms":
+                        stepSize = .step500ms
+                    default:
+                        logger.warning("Unknown step size: \(arguments[i + 1]), using 500ms")
                     }
                     i += 1
                 }
@@ -100,7 +119,8 @@ enum LSEENDCommand {
 
         print("LS-EEND Diarization")
         print("   Audio: \(audioFile)")
-        print("   Variant: \(variant.rawValue)")
+        print("   Variant: \(variant.description)")
+        print("   Step size: \(stepSize.description)")
         print("   Threshold: \(threshold)")
 
         var timelineConfig = DiarizerTimelineConfig(onsetThreshold: threshold, onsetPadFrames: 0)
@@ -111,12 +131,23 @@ enum LSEENDCommand {
         if let v = minDurationOn { timelineConfig.minDurationOn = v }
         if let v = minDurationOff { timelineConfig.minDurationOff = v }
 
-        let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly, timelineConfig: timelineConfig)
+        let diarizer: LSEENDDiarizer
 
         do {
             let loadStart = Date()
             print("Loading models from HuggingFace...")
-            try await diarizer.initialize(variant: variant)
+            let model = try await LSEENDModel.loadFromHuggingFace(
+                variant: variant,
+                stepSize: stepSize,
+                computeUnits: .cpuOnly
+            )
+            diarizer = try LSEENDDiarizer(model: model)
+            diarizer.timeline = DiarizerTimeline(
+                config: configuredTimelineConfig(
+                    base: timelineConfig,
+                    diarizer: diarizer
+                )
+            )
             let loadTime = Date().timeIntervalSince(loadStart)
             print("Models loaded in \(String(format: "%.2f", loadTime))s")
 
@@ -140,7 +171,12 @@ enum LSEENDCommand {
             fflush(stdout)
             let startTime = Date()
             let audioURL = URL(fileURLWithPath: audioFile)
-            let timeline = try diarizer.processComplete(audioFileURL: audioURL)
+            let timeline = try diarizer.processComplete(
+                audioFileURL: audioURL,
+                keepingEnrolledSpeakers: nil,
+                finalizeOnCompletion: true,
+                progressCallback: nil
+            )
 
             let processingTime = Date().timeIntervalSince(startTime)
             let duration = timeline.finalizedDuration
@@ -195,7 +231,7 @@ enum LSEENDCommand {
             if let outputFile = outputFile {
                 var output: [String: Any] = [
                     "audioFile": audioFile,
-                    "variant": variant.rawValue,
+                    "variant": variant.description,
                     "durationSeconds": duration,
                     "processingTimeSeconds": processingTime,
                     "rtfx": rtfx,
@@ -238,7 +274,8 @@ enum LSEENDCommand {
                 fluidaudio lseend <audio_file> [options]
 
             Options:
-                --variant <name>        Model variant: ami, callhome, dihard2, dihard3 (default: dihard3)
+                --variant <name>        Model variant: ami, callhome, dihard2, dihard3 (default: ami)
+                --step-size <name>      Model step size: 100ms, 200ms, 300ms, 400ms, 500ms (default: 500ms)
                 --threshold <value>     Speaker activity threshold (default: 0.5)
                 --onset <value>         Onset threshold for speech detection (default: 0.5)
                 --offset <value>        Offset threshold for speech detection (default: 0.5)
@@ -256,9 +293,24 @@ enum LSEENDCommand {
                 # With specific variant
                 fluidaudio lseend audio.wav --variant ami
 
+                # With explicit step size
+                fluidaudio lseend audio.wav --variant ami --step-size 500ms
+
                 # Save results to file
                 fluidaudio lseend audio.wav --output results.json
             """)
+    }
+
+    private static func configuredTimelineConfig(
+        base: DiarizerTimelineConfig,
+        diarizer: LSEENDDiarizer
+    ) -> DiarizerTimelineConfig {
+        var config = base
+        config.numSpeakers = diarizer.numSpeakers ?? config.numSpeakers
+        if let frameHz = diarizer.modelFrameHz {
+            config.frameDurationSeconds = Float(1.0 / frameHz)
+        }
+        return config
     }
 }
 #endif

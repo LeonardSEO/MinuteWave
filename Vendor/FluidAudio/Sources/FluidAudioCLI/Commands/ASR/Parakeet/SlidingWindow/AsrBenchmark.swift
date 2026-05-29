@@ -1,6 +1,7 @@
 #if os(macOS)
 import AVFoundation
 import FluidAudio
+import Foundation
 import OSLog
 
 /// LibriSpeech dataset manager and ASR benchmarking
@@ -141,7 +142,7 @@ public class ASRBenchmark {
             streamingEouManager = StreamingEouAsrManager()
             let modelDir = URL(fileURLWithPath: "/Users/kikow/brandon/FluidAudioSwift/Models/ParakeetEOU/Streaming")
             do {
-                try await streamingEouManager?.loadModels(modelDir: modelDir)
+                try await streamingEouManager?.loadModels(from: modelDir)
                 logger.info("Initialized Streaming EOU Manager")
             } catch {
                 logger.error("Failed to initialize Streaming EOU Manager: \(error)")
@@ -217,8 +218,9 @@ public class ASRBenchmark {
 
         // Measure only inference time for accurate RTFx calculation
         let url = URL(fileURLWithPath: file.audioPath.path)
+        var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
         let inferenceStartTime = Date()
-        let asrResult = try await asrManager.transcribe(url)
+        let asrResult = try await asrManager.transcribe(url, decoderState: &decoderState)
         let processingTime = Date().timeIntervalSince(inferenceStartTime)
 
         let metrics = calculateASRMetrics(hypothesis: asrResult.text, reference: file.transcript)
@@ -281,8 +283,9 @@ public class ASRBenchmark {
             let audioToProcess = Array(audioSamples[0..<totalSamplesToProcess])
 
             // Measure only inference time for this chunk
+            var chunkDecoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
             let chunkInferenceStartTime = Date()
-            let result = try await asrManager.transcribe(audioToProcess, source: .microphone)
+            let result = try await asrManager.transcribe(audioToProcess, decoderState: &chunkDecoderState)
             let chunkInferenceTime = Date().timeIntervalSince(chunkInferenceStartTime)
 
             // Track first token time
@@ -530,7 +533,8 @@ extension ASRBenchmark {
         let hypWords = normalizedHypothesis.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
 
         // Generate inline diff
-        let (referenceDiff, hypothesisDiff) = generateInlineDiff(reference: refWords, hypothesis: hypWords)
+        let (referenceDiff, hypothesisDiff) = InlineDiff.generate(
+            reference: refWords, hypothesis: hypWords)
 
         logger.info("Normalized Reference:\t\(referenceDiff)")
         logger.info("Normalized Hypothesis:\t\(hypothesisDiff)")
@@ -620,116 +624,6 @@ extension ASRBenchmark {
 
         return differences.reversed()  // Reverse to get correct order
     }
-
-    /// Generate inline diff with full lines and highlighted differences
-    private func generateInlineDiff(reference: [String], hypothesis: [String]) -> (String, String) {
-        let m = reference.count
-        let n = hypothesis.count
-
-        // Handle empty hypothesis or reference
-        if n == 0 {
-            let supportsColor = ProcessInfo.processInfo.environment["TERM"] != nil
-            let redColor = supportsColor ? "\u{001B}[31m" : "["
-            let resetColor = supportsColor ? "\u{001B}[0m" : "]"
-            let refString = reference.map { "\(redColor)\($0)\(resetColor)" }.joined(separator: " ")
-            let hypString = ""
-            return (refString, hypString)
-        }
-        if m == 0 {
-            let supportsColor = ProcessInfo.processInfo.environment["TERM"] != nil
-            let greenColor = supportsColor ? "\u{001B}[32m" : "["
-            let resetColor = supportsColor ? "\u{001B}[0m" : "]"
-            let refString = ""
-            let hypString = hypothesis.map { "\(greenColor)\($0)\(resetColor)" }.joined(separator: " ")
-            return (refString, hypString)
-        }
-
-        // Create DP table for edit distance with backtracking
-        var dp = Array(repeating: Array(repeating: 0, count: n + 1), count: m + 1)
-
-        // Initialize base cases
-        for i in 0...m { dp[i][0] = i }
-        for j in 0...n { dp[0][j] = j }
-
-        // Fill DP table
-        for i in 1...m {
-            for j in 1...n {
-                if reference[i - 1] == hypothesis[j - 1] {
-                    dp[i][j] = dp[i - 1][j - 1]
-                } else {
-                    dp[i][j] =
-                        1
-                        + min(
-                            dp[i - 1][j],  // deletion
-                            dp[i][j - 1],  // insertion
-                            dp[i - 1][j - 1]  // substitution
-                        )
-                }
-            }
-        }
-
-        // Check if terminal supports colors
-        let supportsColor = ProcessInfo.processInfo.environment["TERM"] != nil
-        let redColor = supportsColor ? "\u{001B}[31m" : "["
-        let greenColor = supportsColor ? "\u{001B}[32m" : "["
-        let resetColor = supportsColor ? "\u{001B}[0m" : "]"
-
-        // Backtrack to identify differences
-        var i = m
-        var j = n
-        var refDiffWords: [(String, Bool)] = []  // (word, isDifferent)
-        var hypDiffWords: [(String, Bool)] = []  // (word, isDifferent)
-
-        while i > 0 || j > 0 {
-            if i > 0 && j > 0 && reference[i - 1] == hypothesis[j - 1] {
-                // Match
-                refDiffWords.insert((reference[i - 1], false), at: 0)
-                hypDiffWords.insert((hypothesis[j - 1], false), at: 0)
-                i -= 1
-                j -= 1
-            } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
-                // Substitution
-                refDiffWords.insert((reference[i - 1], true), at: 0)
-                hypDiffWords.insert((hypothesis[j - 1], true), at: 0)
-                i -= 1
-                j -= 1
-            } else if i > 0 && dp[i][j] == dp[i - 1][j] + 1 {
-                // Deletion (word in reference but not in hypothesis)
-                refDiffWords.insert((reference[i - 1], true), at: 0)
-                i -= 1
-            } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
-                // Insertion (word in hypothesis but not in reference)
-                hypDiffWords.insert((hypothesis[j - 1], true), at: 0)
-                j -= 1
-            } else {
-                break
-            }
-        }
-
-        // Build the formatted strings
-        var refString = ""
-        var hypString = ""
-
-        for (word, isDifferent) in refDiffWords {
-            if !refString.isEmpty { refString += " " }
-            if isDifferent {
-                refString += "\(redColor)\(word)\(resetColor)"
-            } else {
-                refString += word
-            }
-        }
-
-        for (word, isDifferent) in hypDiffWords {
-            if !hypString.isEmpty { hypString += " " }
-            if isDifferent {
-                hypString += "\(greenColor)\(word)\(resetColor)"
-            } else {
-                hypString += word
-            }
-        }
-
-        return (refString, hypString)
-    }
 }
 
 // IMPORTANT: RTFx Performance in CI Environments
@@ -756,7 +650,9 @@ extension ASRBenchmark {
         var testStreaming = false
         var streamingChunkDuration = 10.0
         var useStreamingEou = false
+        var longAudioOnly = false
         var modelVersion: AsrModelVersion = .v3  // Default to v3
+        var melChunkContext = true  // Issue #594: opt-out of PR #264's 80ms mel-context prepend
 
         // Check for help flag first
         if arguments.contains("--help") || arguments.contains("-h") {
@@ -797,6 +693,8 @@ extension ASRBenchmark {
                 testStreaming = true
             case "--streaming-eou":
                 useStreamingEou = true
+            case "--long-audio-only":
+                longAudioOnly = true
             case "--dump-features":
                 // Enable debug features if this flag is present
                 debugMode = true
@@ -824,6 +722,8 @@ extension ASRBenchmark {
                     }
                     i += 1
                 }
+            case "--no-mel-context":
+                melChunkContext = false
             default:
                 break
             }
@@ -842,12 +742,15 @@ extension ASRBenchmark {
         case .v2: versionLabel = "v2"
         case .v3: versionLabel = "v3"
         case .tdtCtc110m: versionLabel = "tdt-ctc-110m"
+        case .ctcZhCn: versionLabel = "ctc-zh-cn"
+        case .tdtJa: versionLabel = "tdt-ja"
         }
         logger.info("   Model version: \(versionLabel)")
         logger.info("   Debug mode: \(debugMode ? "enabled" : "disabled")")
         logger.info("   Auto-download: \(autoDownload ? "enabled" : "disabled")")
         logger.info("   Test streaming: \(testStreaming ? "enabled" : "disabled")")
         logger.info("   Streaming EOU: \(useStreamingEou ? "enabled" : "disabled")")
+        logger.info("   Mel chunk context (PR #264): \(melChunkContext ? "enabled" : "disabled")")
         if testStreaming {
             logger.info("   Chunk duration: \(streamingChunkDuration)s")
         }
@@ -857,7 +760,7 @@ extension ASRBenchmark {
             subset: subset,
             maxFiles: maxFiles,
             debugMode: debugMode,
-            longAudioOnly: false,
+            longAudioOnly: longAudioOnly,
             testStreaming: testStreaming,
             streamingChunkDuration: streamingChunkDuration,
             useStreamingEou: useStreamingEou
@@ -869,7 +772,8 @@ extension ASRBenchmark {
         let tdtConfig = TdtConfig(blankId: modelVersion.blankId)
         let asrConfig = ASRConfig(
             tdtConfig: tdtConfig,
-            encoderHiddenSize: modelVersion.encoderHiddenSize
+            encoderHiddenSize: modelVersion.encoderHiddenSize,
+            melChunkContext: melChunkContext
         )
 
         let asrManager = AsrManager(config: asrConfig)
@@ -888,7 +792,7 @@ extension ASRBenchmark {
 
                 let streamingEouManager = StreamingEouAsrManager(debugFeatures: true)
                 let modelDir = URL(fileURLWithPath: "/Users/kikow/brandon/FluidAudioSwift/Models/ParakeetEOU/Streaming")
-                try await streamingEouManager.loadModels(modelDir: modelDir)
+                try await streamingEouManager.loadModels(from: modelDir)
 
                 // Process single file
                 let fileUrl = URL(fileURLWithPath: singleFile)
@@ -913,7 +817,7 @@ extension ASRBenchmark {
             logger.info("Initializing ASR system...")
             do {
                 let models = try await AsrModels.downloadAndLoad(version: modelVersion)
-                try await asrManager.initialize(models: models)
+                try await asrManager.loadModels(models)
                 logger.info("ASR system initialized successfully")
 
             } catch {
@@ -1122,25 +1026,27 @@ extension ASRBenchmark {
     }
 
     private static func printUsage() {
-        let logger = AppLogger(category: "Benchmark")
-        logger.info(
-            """
+        let usage = """
             ASR Benchmark Command Usage:
                 fluidaudio asr-benchmark [options]
 
             Options:
-                --subset <name>           LibriSpeech subset to use (default: test-clean)
-                                         Available: test-clean, test-other, dev-clean, dev-other
-                --max-files <number>      Maximum number of files to process (default: all)
-                --single-file <id>        Process only a specific file (e.g., 1089-134686-0011)
-                --output <file>           Output JSON file path (default: asr_benchmark_results.json)
-                --model-version <version> ASR model version to use: v2, v3, or tdt-ctc-110m (default: v3)
-                --debug                   Enable debug logging
-                --auto-download           Automatically download LibriSpeech dataset (default)
-                --no-auto-download        Disable automatic dataset download
-                --test-streaming          Enable streaming simulation mode
-                --chunk-duration <secs>   Chunk duration for streaming mode (default: 0.1s, min: 1.0s)
-                --help, -h               Show this help message
+                --subset <name>            LibriSpeech subset to use (default: test-clean)
+                                          Available: test-clean, test-other, dev-clean, dev-other
+                --max-files <number>       Maximum number of files to process (default: all)
+                --single-file <id>         Process only a specific file (e.g., 1089-134686-0011)
+                --output <file>            Output JSON file path (default: asr_benchmark_results.json)
+                --model-version <version>  ASR model version: v2, v3, or tdt-ctc-110m (default: v3)
+                --debug                    Enable debug logging
+                --auto-download            Automatically download LibriSpeech dataset (default)
+                --no-auto-download         Disable automatic dataset download
+                --test-streaming           Enable streaming simulation mode
+                --chunk-duration <secs>    Chunk duration for streaming mode (default: 0.1s, min: 1.0s)
+                --streaming-eou           Use Streaming EOU model for transcription
+                --long-audio-only          Only process files with 4-20 second duration
+                --dump-features            Dump CoreML mel features to JSON (requires --streaming-eou + --single-file)
+                --no-mel-context           Disable 80ms mel-context prepend for long-form batch ASR
+                --help, -h                Show this help message
 
             Description:
                 The ASR benchmark command evaluates Automatic Speech Recognition performance
@@ -1168,8 +1074,8 @@ extension ASRBenchmark {
                 # Test streaming performance with 0.5s chunks
                 fluidaudio asr-benchmark --test-streaming --chunk-duration 1-
 
-                # Debug mode with custom output file
-                fluidaudio asr-benchmark --debug --output my_results.json
+                # Only process files with longer duration
+                fluidaudio asr-benchmark --long-audio-only --max-files 10
 
             Expected Performance:
                 - test-clean: 2-6% WER for good ASR systems
@@ -1179,7 +1085,8 @@ extension ASRBenchmark {
             Note: First run will download LibriSpeech dataset (~1.1GB for test-clean).
                   ASR models will be downloaded automatically if not present.
             """
-        )
+        fputs(usage, stderr)
+        fflush(stderr)
     }
 }
 #endif

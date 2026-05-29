@@ -11,6 +11,14 @@ DMG_PATH="$DIST_DIR/${APP_NAME}-macOS.dmg"
 DMG_VOLUME_NAME="${APP_NAME} Installer"
 DMG_BACKGROUND_PATH="$ROOT_DIR/docs/assets/dmg-background.png"
 FORCE_PLAIN_DMG="${FORCE_PLAIN_DMG:-0}"
+NOTARIZE_DMG="${NOTARIZE_DMG:-0}"
+APPLE_NOTARY_KEYCHAIN_PROFILE="${APPLE_NOTARY_KEYCHAIN_PROFILE:-}"
+APPLE_NOTARY_APPLE_ID="${APPLE_NOTARY_APPLE_ID:-}"
+APPLE_NOTARY_TEAM_ID="${APPLE_NOTARY_TEAM_ID:-}"
+APPLE_NOTARY_PASSWORD="${APPLE_NOTARY_PASSWORD:-}"
+APPLE_NOTARY_KEY_ID="${APPLE_NOTARY_KEY_ID:-}"
+APPLE_NOTARY_ISSUER_ID="${APPLE_NOTARY_ISSUER_ID:-}"
+APPLE_NOTARY_KEY_PATH="${APPLE_NOTARY_KEY_PATH:-}"
 
 mkdir -p "$DIST_DIR"
 
@@ -74,6 +82,44 @@ if [[ "$FORCE_PLAIN_DMG" == "1" ]]; then
 else
   echo "Styled DMG generated."
 fi
+
+notarize_and_staple_dmg() {
+  if [[ "$NOTARIZE_DMG" != "1" ]]; then
+    return 0
+  fi
+
+  if ! command -v xcrun >/dev/null 2>&1; then
+    echo "Error: xcrun is required for notarization." >&2
+    exit 1
+  fi
+
+  if [[ "${SIGNING_IDENTITY:--}" == "-" ]]; then
+    echo "Error: notarization requires a Developer ID signed app; SIGNING_IDENTITY is ad-hoc." >&2
+    exit 1
+  fi
+
+  local notary_args=()
+  if [[ -n "$APPLE_NOTARY_KEYCHAIN_PROFILE" ]]; then
+    notary_args=(--keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE")
+  elif [[ -n "$APPLE_NOTARY_APPLE_ID" && -n "$APPLE_NOTARY_TEAM_ID" && -n "$APPLE_NOTARY_PASSWORD" ]]; then
+    notary_args=(--apple-id "$APPLE_NOTARY_APPLE_ID" --team-id "$APPLE_NOTARY_TEAM_ID" --password "$APPLE_NOTARY_PASSWORD")
+  elif [[ -n "$APPLE_NOTARY_KEY_ID" && -n "$APPLE_NOTARY_ISSUER_ID" && -n "$APPLE_NOTARY_KEY_PATH" ]]; then
+    notary_args=(--key "$APPLE_NOTARY_KEY_PATH" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID")
+  else
+    echo "Error: NOTARIZE_DMG=1 requires notary credentials." >&2
+    echo "Provide APPLE_NOTARY_KEYCHAIN_PROFILE, Apple ID credentials, or App Store Connect API key credentials." >&2
+    exit 1
+  fi
+
+  echo "Submitting DMG for notarization..."
+  xcrun notarytool submit "$DMG_PATH" "${notary_args[@]}" --wait
+
+  echo "Stapling notarization ticket..."
+  xcrun stapler staple "$DMG_PATH"
+  xcrun stapler validate "$DMG_PATH"
+}
+
+notarize_and_staple_dmg
 
 echo ""
 echo "Done."

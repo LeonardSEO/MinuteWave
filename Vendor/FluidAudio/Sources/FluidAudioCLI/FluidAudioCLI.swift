@@ -2,7 +2,9 @@
 import AVFoundation
 import FluidAudio
 import Foundation
+#if canImport(MachTaskSelfWrapper)
 import MachTaskSelfWrapper
+#endif
 
 // Using @main instead of main.swift for Swift 6 compatibility.
 // This provides an explicit async context and clear isolation semantics.
@@ -42,6 +44,14 @@ struct FluidAudioCLI {
             await MultiStreamCommand.run(arguments: Array(arguments.dropFirst(2)))
         case "tts":
             await TTS.run(arguments: Array(arguments.dropFirst(2)))
+        case "magpie":
+            await MagpieCommand.run(arguments: Array(arguments.dropFirst(2)))
+        case "tts-asr-verify":
+            await TTSAsrVerifyCommand.run(arguments: Array(arguments.dropFirst(2)))
+        case "tts-benchmark":
+            await TtsBenchmarkCommand.run(arguments: Array(arguments.dropFirst(2)))
+        case "minimax-corpus":
+            await MinimaxCorpusCommand.run(arguments: Array(arguments.dropFirst(2)))
         case "diarization-benchmark":
             await StreamDiarizationBenchmark.run(arguments: Array(arguments.dropFirst(2)))
         case "process":
@@ -70,6 +80,16 @@ struct FluidAudioCLI {
             await NemotronBenchmark.run(arguments: Array(arguments.dropFirst(2)))
         case "nemotron-transcribe":
             await NemotronTranscribe.run(arguments: Array(arguments.dropFirst(2)))
+        case "ctc-zh-cn-transcribe":
+            await CtcZhCnTranscribeCommand.run(arguments: Array(arguments.dropFirst(2)))
+        case "ctc-zh-cn-benchmark":
+            await CtcZhCnBenchmark.run(arguments: Array(arguments.dropFirst(2)))
+        case "ja-benchmark":
+            await JapaneseAsrBenchmark.run(arguments: Array(arguments.dropFirst(2)))
+        case "cohere-transcribe":
+            await CohereTranscribeCommand.run(arguments: Array(arguments.dropFirst(2)))
+        case "cohere-benchmark":
+            await CohereBenchmark.run(arguments: Array(arguments.dropFirst(2)))
         case "help", "--help", "-h":
             printUsage()
         default:
@@ -95,7 +115,11 @@ struct FluidAudioCLI {
                 fleurs-benchmark        Run multilingual ASR benchmark on FLEURS dataset
                 transcribe              Transcribe audio file using streaming ASR
                 multi-stream            Transcribe multiple audio files in parallel
-                tts                     Synthesize speech from text using Kokoro TTS
+                tts                     Synthesize speech from text (KokoroAne / PocketTTS / StyleTTS2)
+                magpie                  Magpie TTS Multilingual 357M (experimental, ~0.04 RTFx — slow, needs perf work)
+                tts-asr-verify          Batch TTS→ASR roundtrip WER verification
+                tts-benchmark           Quantitative TTS benchmark (latency, quality, compute-unit sweep)
+                minimax-corpus          Fetch MiniMax TTS Multilingual Test Set into Benchmarks/tts/corpus/minimax
                 parakeet-eou            Run Parakeet EOU Streaming ASR on a single file
                 ctc-earnings-benchmark  Run CTC keyword spotting benchmark on Earnings22
                 sortformer              Run Sortformer streaming diarization
@@ -107,6 +131,11 @@ struct FluidAudioCLI {
                 g2p-benchmark           Run multilingual G2P benchmark
                 nemotron-benchmark      Run Nemotron 0.6B streaming ASR benchmark
                 nemotron-transcribe     Transcribe custom audio files with Nemotron
+                ctc-zh-cn-transcribe    Transcribe Mandarin Chinese audio with Parakeet CTC
+                ctc-zh-cn-benchmark     Run CTC zh-CN benchmark on THCHS-30 dataset
+                ja-benchmark            Run Japanese ASR benchmark on JSUT/Common Voice
+                cohere-transcribe       Transcribe using Cohere Transcribe (cache-external pipeline, 14 languages)
+                cohere-benchmark        Run Cohere Transcribe FLEURS benchmark
                 download                Download evaluation datasets
                 help                    Show this help message
 
@@ -130,6 +159,14 @@ struct FluidAudioCLI {
                 fluidaudio vad-analyze audio.wav --streaming
 
                 fluidaudio download --dataset ami-sdm
+
+                fluidaudio ja-benchmark --dataset jsut --samples 100
+
+                fluidaudio cohere-transcribe audio.wav --language ja
+
+                fluidaudio cohere-benchmark --languages en_us,ja_jp,fr_fr --max-files 100
+
+                fluidaudio ja-benchmark --dataset cv-test --samples 500 --auto-download
             """
         )
     }

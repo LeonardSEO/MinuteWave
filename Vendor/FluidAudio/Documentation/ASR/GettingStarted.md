@@ -10,7 +10,7 @@
 
 ## Streaming ASR (Parakeet EOU)
 
-- Model: `FluidInference/parakeet-eou-1.1b-coreml`
+- Model: `FluidInference/parakeet-realtime-eou-120m-coreml`
 - Chunk Sizes: 160ms (lowest latency), 320ms, 1600ms (highest throughput)
 - End-of-Utterance Detection: Built-in silence detection with configurable debounce
 
@@ -35,7 +35,7 @@ Task {
     // 1) Initialize ASR manager and load models
     let models = try await AsrModels.downloadAndLoad(version: .v3)  // Switch to .v2 for English-only
     let asrManager = AsrManager(config: .default)
-    try await asrManager.initialize(models: models)
+    try await asrManager.configure(models: models)
 
     // 2) Prepare 16 kHz mono samples (see: Audio Conversion)
     let samples = try await loadSamples16kMono(path: "path/to/audio.wav")
@@ -60,7 +60,7 @@ handles format conversion internally via `AudioConverter`.
 ```swift
 let models = try await AsrModels.downloadAndLoad(version: .v3)
 let asrManager = AsrManager()
-try await asrManager.initialize(models: models)
+try await asrManager.loadModels(models)
 
 let audioURL = URL(fileURLWithPath: "/path/to/audio.wav")
 let result = try await asrManager.transcribe(audioURL, source: .system)

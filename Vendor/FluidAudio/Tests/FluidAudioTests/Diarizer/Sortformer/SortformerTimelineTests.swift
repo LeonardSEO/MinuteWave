@@ -163,7 +163,7 @@ final class SortformerTimelineTests: XCTestCase {
         let segment = try XCTUnwrap(timeline.speakers[0]?.finalizedSegments.first)
         XCTAssertEqual(segment.startFrame, 0)
         XCTAssertEqual(segment.endFrame, 5)
-        XCTAssertEqual(segment.confidence, 0.7, accuracy: 1e-6)
+        XCTAssertEqual(segment.activity, 0.7, accuracy: 1e-6)
     }
 
     func testSegmentConfidenceExcludesBridgedGapFrames() throws {
@@ -193,7 +193,7 @@ final class SortformerTimelineTests: XCTestCase {
         let segment = try XCTUnwrap(timeline.speakers[0]?.finalizedSegments.first)
         XCTAssertEqual(segment.startFrame, 0)
         XCTAssertEqual(segment.endFrame, 4)
-        XCTAssertEqual(segment.confidence, (0.9 + 0.7 + 0.7) / 3.0, accuracy: 1e-6)
+        XCTAssertEqual(segment.activity, (0.9 + 0.7 + 0.7) / 3.0, accuracy: 1e-6)
     }
 
     // MARK: - Probability Access
@@ -256,5 +256,184 @@ final class SortformerTimelineTests: XCTestCase {
         XCTAssertEqual(segment.startFrame, 10, "0.8 / 0.08 = 10")
         XCTAssertEqual(segment.endFrame, 20, "1.6 / 0.08 = 20")
         XCTAssertEqual(segment.speakerIndex, 1)
+    }
+
+    // MARK: - Emit-only mode (storeSegments = false)
+
+    /// Predictions where speaker 0 is active for the first half of the chunk
+    /// and silent for the second half (so the segment closes within the chunk).
+    private func boundedSpeaker0Predictions(numSpeakers: Int, frameCount: Int) -> [Float] {
+        var predictions = [Float](repeating: 0.0, count: frameCount * numSpeakers)
+        for frame in 0..<(frameCount / 2) {
+            predictions[frame * numSpeakers + 0] = 0.9
+        }
+        return predictions
+    }
+
+    func testEmitOnlyModeDoesNotPopulateSpeakers() throws {
+        var config = DiarizerTimelineConfig.sortformerDefault
+        config.storeSegments = false
+        let timeline = DiarizerTimeline(config: config)
+
+        let frameCount = 12
+        let predictions = boundedSpeaker0Predictions(numSpeakers: 4, frameCount: frameCount)
+
+        let update = try timeline.addChunk(
+            DiarizerChunkResult(
+                startFrame: 0,
+                finalizedPredictions: predictions,
+                finalizedFrameCount: frameCount
+            )
+        )
+        timeline.finalize()
+
+        XCTAssertTrue(timeline.speakers.isEmpty, "Emit-only mode must not insert into the speakers map")
+        XCTAssertFalse(
+            update.finalizedSegments.isEmpty,
+            "Emit-only mode must still deliver segments via DiarizerTimelineUpdate"
+        )
+        XCTAssertEqual(update.finalizedSegments.first?.speakerIndex, 0)
+    }
+
+    func testEmitOnlyModeUpdatesMatchStoringMode() throws {
+        let frameCount = 24
+        let predictions = boundedSpeaker0Predictions(numSpeakers: 4, frameCount: frameCount)
+
+        let storingTimeline = DiarizerTimeline(config: .sortformerDefault)
+        var emitOnlyConfig = DiarizerTimelineConfig.sortformerDefault
+        emitOnlyConfig.storeSegments = false
+        let emitOnlyTimeline = DiarizerTimeline(config: emitOnlyConfig)
+
+        let storingUpdate = try storingTimeline.addChunk(
+            DiarizerChunkResult(
+                startFrame: 0,
+                finalizedPredictions: predictions,
+                finalizedFrameCount: frameCount
+            )
+        )
+        let emitOnlyUpdate = try emitOnlyTimeline.addChunk(
+            DiarizerChunkResult(
+                startFrame: 0,
+                finalizedPredictions: predictions,
+                finalizedFrameCount: frameCount
+            )
+        )
+
+        XCTAssertEqual(storingUpdate.finalizedSegments.count, emitOnlyUpdate.finalizedSegments.count)
+        for (a, b) in zip(storingUpdate.finalizedSegments, emitOnlyUpdate.finalizedSegments) {
+            XCTAssertEqual(a.speakerIndex, b.speakerIndex)
+            XCTAssertEqual(a.startFrame, b.startFrame)
+            XCTAssertEqual(a.endFrame, b.endFrame)
+            XCTAssertEqual(a.activity, b.activity, accuracy: 1e-6)
+        }
+        XCTAssertFalse(storingTimeline.speakers.isEmpty)
+        XCTAssertTrue(emitOnlyTimeline.speakers.isEmpty)
+    }
+
+    func testStoreSegmentsDefaultsToTrue() {
+        let config = DiarizerTimelineConfig.sortformerDefault
+        XCTAssertTrue(config.storeSegments, "Default must preserve existing storage behavior")
+    }
+
+    func testEmitOnlyModeAcrossMultipleChunks() throws {
+        var config = DiarizerTimelineConfig.sortformerDefault
+        config.storeSegments = false
+        let timeline = DiarizerTimeline(config: config)
+
+        let numSpeakers = 4
+        let chunkFrames = 12
+        var totalFinalizedSegments = 0
+
+        for chunkIndex in 0..<3 {
+            let predictions = boundedSpeaker0Predictions(numSpeakers: numSpeakers, frameCount: chunkFrames)
+            let update = try timeline.addChunk(
+                DiarizerChunkResult(
+                    startFrame: chunkIndex * chunkFrames,
+                    finalizedPredictions: predictions,
+                    finalizedFrameCount: chunkFrames
+                )
+            )
+            totalFinalizedSegments += update.finalizedSegments.count
+            XCTAssertTrue(timeline.speakers.isEmpty, "Speakers must remain empty across all chunks")
+        }
+
+        XCTAssertGreaterThan(totalFinalizedSegments, 0, "Updates must still emit segments across chunks")
+        timeline.finalize()
+        XCTAssertTrue(timeline.speakers.isEmpty)
+    }
+
+    func testEmitOnlyModeTentativeSegmentsAreNotPersisted() throws {
+        var config = DiarizerTimelineConfig.sortformerDefault
+        config.storeSegments = false
+        let timeline = DiarizerTimeline(config: config)
+
+        let numSpeakers = 4
+        let tentativeFrameCount = 8
+        var tentativePredictions = [Float](repeating: 0.0, count: tentativeFrameCount * numSpeakers)
+        for frame in 0..<tentativeFrameCount {
+            tentativePredictions[frame * numSpeakers + 0] = 0.9
+        }
+
+        let update = try timeline.addChunk(
+            DiarizerChunkResult(
+                startFrame: 0,
+                finalizedPredictions: [],
+                finalizedFrameCount: 0,
+                tentativePredictions: tentativePredictions,
+                tentativeFrameCount: tentativeFrameCount
+            )
+        )
+
+        XCTAssertFalse(update.tentativeSegments.isEmpty, "Tentative segments must still be emitted")
+        XCTAssertTrue(timeline.speakers.isEmpty, "Tentative segments must not create speakers")
+    }
+
+    func testUpsertSpeakerRefusedInEmitOnlyMode() {
+        var config = DiarizerTimelineConfig.sortformerDefault
+        config.storeSegments = false
+        let timeline = DiarizerTimeline(config: config)
+
+        XCTAssertNil(timeline.upsertSpeaker(named: "Alice", atIndex: 0))
+        XCTAssertNil(timeline.upsertSpeaker(DiarizerSpeaker(index: 1, name: "Bob"), atIndex: 1))
+        XCTAssertTrue(timeline.speakers.isEmpty)
+    }
+
+    func testSnapshotInitDropsSpeakersInEmitOnlyMode() throws {
+        // Build a populated timeline first.
+        let storingTimeline = DiarizerTimeline(config: .sortformerDefault)
+        let predictions = boundedSpeaker0Predictions(numSpeakers: 4, frameCount: 12)
+        _ = try storingTimeline.addChunk(
+            DiarizerChunkResult(
+                startFrame: 0,
+                finalizedPredictions: predictions,
+                finalizedFrameCount: 12
+            )
+        )
+        XCTAssertFalse(storingTimeline.speakers.isEmpty)
+        let snapshot = storingTimeline.takeSnapshot()
+
+        // Restore into an emit-only timeline.
+        var emitOnlyConfig = DiarizerTimelineConfig.sortformerDefault
+        emitOnlyConfig.storeSegments = false
+        let emitOnlyTimeline = DiarizerTimeline(from: snapshot, withConfig: emitOnlyConfig)
+
+        XCTAssertTrue(emitOnlyTimeline.speakers.isEmpty, "Emit-only mode must drop snapshot speakers")
+    }
+
+    func testRebuildWorksInEmitOnlyMode() throws {
+        var config = DiarizerTimelineConfig.sortformerDefault
+        config.storeSegments = false
+        let timeline = DiarizerTimeline(config: config)
+
+        let predictions = boundedSpeaker0Predictions(numSpeakers: 4, frameCount: 16)
+        let update = try timeline.rebuild(
+            finalizedPredictions: predictions,
+            tentativePredictions: [],
+            keepingSpeakers: false,
+            isComplete: true
+        )
+
+        XCTAssertFalse(update.finalizedSegments.isEmpty)
+        XCTAssertTrue(timeline.speakers.isEmpty)
     }
 }

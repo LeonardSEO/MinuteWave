@@ -645,7 +645,8 @@ final class SQLiteRepository: SessionRepository, @unchecked Sendable {
         try bind(bindings, to: statement)
 
         var rows: [[String: Any?]] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var rc = sqlite3_step(statement)
+        while rc == SQLITE_ROW {
             var row: [String: Any?] = [:]
             let columnCount = sqlite3_column_count(statement)
             for i in 0..<columnCount {
@@ -654,6 +655,11 @@ final class SQLiteRepository: SessionRepository, @unchecked Sendable {
                 row[name] = columnValue(statement: statement, index: i)
             }
             rows.append(row)
+            rc = sqlite3_step(statement)
+        }
+
+        guard rc == SQLITE_DONE else {
+            throw AppError.storageFailure(reason: sqliteErrorMessage())
         }
 
         return rows

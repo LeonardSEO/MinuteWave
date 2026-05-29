@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import AINoteTakerApp
 
@@ -73,6 +74,31 @@ private func cleanupDatabaseFiles(at databaseURL: URL) {
     try? fm.removeItem(at: databaseURL)
     try? fm.removeItem(at: URL(fileURLWithPath: databaseURL.path + "-wal"))
     try? fm.removeItem(at: URL(fileURLWithPath: databaseURL.path + "-shm"))
+}
+
+private func seedSettingsViewWithTerminalStepError(databaseURL: URL, settingsPayload: Data) throws {
+    var handle: OpaquePointer?
+    let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+    guard sqlite3_open_v2(databaseURL.path, &handle, flags, nil) == SQLITE_OK, let db = handle else {
+        throw AppError.storageFailure(reason: "Unable to open sqlite test database.")
+    }
+    defer { sqlite3_close(db) }
+
+    let payloadHex = settingsPayload.map { String(format: "%02x", $0) }.joined()
+    let sql = """
+    CREATE VIEW settings AS
+    SELECT 1 AS id, X'\(payloadHex)' AS payload_json
+    UNION ALL
+    SELECT 1 AS id, json_extract('not-json', '$') AS payload_json;
+    """
+
+    var errorMessage: UnsafeMutablePointer<Int8>?
+    let rc = sqlite3_exec(db, sql, nil, nil, &errorMessage)
+    guard rc == SQLITE_OK else {
+        let message = errorMessage.map { String(cString: $0) } ?? "Unknown sqlite error"
+        sqlite3_free(errorMessage)
+        throw AppError.storageFailure(reason: message)
+    }
 }
 
 private func makeOpenAITranscriptionConfig(baseURL: String) -> TranscriptionConfig {
@@ -180,6 +206,29 @@ func defaultSettingsRoundTrip() async throws {
     #expect(loaded.transcriptionConfig.providerType == settings.transcriptionConfig.providerType)
 }
 
+@Test("SQLite query throws terminal step errors")
+func sqliteQueryThrowsTerminalStepErrors() async throws {
+    let tempDB = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("ai-note-taker-tests-\(UUID().uuidString).sqlite")
+
+    let settingsPayload = try JSONEncoder().encode(AppSettings.default)
+    try seedSettingsViewWithTerminalStepError(databaseURL: tempDB, settingsPayload: settingsPayload)
+
+    let repository = try SQLiteRepository(databaseURL: tempDB)
+    defer { cleanupDatabaseFiles(at: tempDB) }
+
+    var threwTerminalStepError = false
+    do {
+        _ = try await repository.loadSettings()
+    } catch let error as AppError {
+        if case .storageFailure(let reason) = error {
+            threwTerminalStepError = reason.localizedCaseInsensitiveContains("malformed JSON")
+        }
+    } catch {}
+
+    #expect(threwTerminalStepError == true)
+}
+
 @Test("Semantic version parser normalizes Git tags")
 func semanticVersionParserNormalizesGitTags() {
     #expect(AppSemanticVersion("v0.1.10-beta.1")?.description == "0.1.10")
@@ -232,6 +281,44 @@ func openAIResponsesClientValidationRejectsHTTP() {
         }
     } catch {}
     #expect(rejected == true)
+}
+
+@Test("LM Studio endpoint policy only allows localhost and loopback hosts")
+func lmStudioEndpointPolicyAllowsOnlyLoopback() {
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("http://localhost:1234") == true)
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("http://127.0.0.1:1234") == true)
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("http://[::1]:1234") == true)
+
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("https://example.com") == false)
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("http://192.168.1.20:1234") == false)
+    #expect(LMStudioEndpointPolicy.validateLoopbackBaseURL("http://10.0.0.8:1234") == false)
+}
+
+@Test("LM Studio service URL builders reject remote endpoints")
+func lmStudioServiceURLBuildersRejectRemoteEndpoints() {
+    let runtimeClient = LMStudioRuntimeClient()
+    let compatClient = LMStudioOpenAICompatClient()
+    let remoteEndpoints = [
+        "https://example.com",
+        "http://192.168.1.20:1234"
+    ]
+
+    for endpoint in remoteEndpoints {
+        let config = LMStudioConfig(endpoint: endpoint, apiKeyRef: "", selectedModelIdentifier: "")
+
+        #expect(runtimeClient.modelsEndpointURL(baseURL: endpoint) == nil)
+        #expect(compatClient.chatCompletionURL(baseURL: endpoint) == nil)
+
+        var rejected = false
+        do {
+            try compatClient.validateConfig(config)
+        } catch let error as AppError {
+            if case .invalidConfiguration = error {
+                rejected = true
+            }
+        } catch {}
+        #expect(rejected == true)
+    }
 }
 
 @Test("OpenAI transcription start rejects non-HTTPS configuration")
@@ -937,9 +1024,9 @@ func screenCaptureQuickState() {
     #expect(Permissions.quickScreenCaptureState(preflightGranted: false) == .notDetermined)
 }
 
-@Test("Screen capture quick state reuses last known granted state")
-func screenCaptureQuickStateUsesLastKnownGrant() {
-    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .granted) == .granted)
+@Test("Screen capture quick state does not reuse stale granted state")
+func screenCaptureQuickStateDoesNotReuseStaleGrant() {
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .granted) == .notDetermined)
     #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .denied) == .denied)
 }
 

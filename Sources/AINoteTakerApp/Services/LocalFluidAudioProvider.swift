@@ -126,7 +126,8 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             throw AppError.providerUnavailable(reason: "ASR manager is not initialized.")
         }
 
-        let rawAsr = try await asrManager.transcribe(audioSamples, source: .system)
+        var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
+        let rawAsr = try await asrManager.transcribe(audioSamples, decoderState: &decoderState)
         let normalizedAsr = normalizeASRResult(rawAsr)
         let transcriptText = normalizedAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
@@ -208,15 +209,15 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         )
 
         do {
+            let asrRepo = Repo.parakeetV3
             let asrDirectory = AppPaths.fluidAudioModelsDirectory
-                .appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
-            let asrCacheDirectory = AppPaths.fluidAudioModelsDirectory
-                .appendingPathComponent(Repo.parakeet.folderName, isDirectory: true)
+                .appendingPathComponent(asrRepo.folderName, isDirectory: true)
+            let asrCacheDirectory = asrDirectory
             let diarizerCacheDirectory = AppPaths.fluidAudioModelsDirectory
                 .appendingPathComponent(Repo.diarizer.folderName, isDirectory: true)
 
             async let asrManifestTask = fetchRepoManifest(
-                repo: .parakeet,
+                repo: asrRepo,
                 requiredModelRoots: ModelNames.ASR.requiredModels,
                 includeMetadataExtensions: Set(["json", "txt"])
             )
@@ -248,8 +249,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 status: .verifying,
                 step: .initializingAsr
             )
-            let localAsrManager = AsrManager(config: .default)
-            try await localAsrManager.initialize(models: loadedAsrModels)
+            let localAsrManager = AsrManager(config: .default, models: loadedAsrModels)
             emitPreparationProgress(
                 progress: 0.68,
                 status: .verifying,
@@ -281,7 +281,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             let integrityOutcomes = try ModelIntegrityVerifier().verifyOrBootstrap(
                 [
                     ModelIntegrityVerifier.RepositoryInput(
-                        repositoryId: Repo.parakeet.remotePath,
+                        repositoryId: asrRepo.remotePath,
                         rootDirectory: asrCacheDirectory,
                         expectedRelativePaths: expectedIntegrityPaths(from: asrManifest)
                     ),
@@ -292,7 +292,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                     ),
                 ]
             )
-            if integrityOutcomes.values.contains(.bootstrapped) {
+            if integrityOutcomes.values.contains(ModelIntegrityVerifier.RepositoryOutcome.bootstrapped) {
                 let warningMessage =
                     "Model integrity baseline initialized; subsequent local model tampering will be blocked."
                 AppLogger.security.warning("\(warningMessage, privacy: .public)")

@@ -19,7 +19,7 @@ public final class DiarizerManager {
     private let memoryOptimizer = ANEMemoryOptimizer()
 
     // Speaker manager for consistent speaker tracking
-    public let speakerManager: SpeakerManager
+    public var speakerManager: SpeakerManager
 
     public init(config: DiarizerConfig = .default) {
         self.config = config
@@ -213,7 +213,8 @@ public final class DiarizerManager {
             )
 
             // Build speakerDatabase from speakerManager for debug output
-            let speakerDB = speakerManager.getAllSpeakers().reduce(into: [String: [Float]]()) { result, item in
+            let speakerDB = speakerManager.getAllSpeakers().reduce(into: [String: [Float]]()) {
+                result, item in
                 result[item.key] = item.value.currentEmbedding
             }
 

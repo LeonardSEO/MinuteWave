@@ -1,6 +1,13 @@
 # API Reference
 
-This page summarizes the primary public APIs across modules. See inline doc comments and module-specific documentation for complete details.
+Primary public APIs for FluidAudio components. See inline doc comments for complete details.
+
+**Components:**
+- [Common Patterns](#common-patterns)
+- [Diarization](#diarization)
+- [Voice Activity Detection](#voice-activity-detection)
+- [Automatic Speech Recognition](#automatic-speech-recognition)
+- [Text-to-Speech](#text-to-speech)
 
 ## Common Patterns
 
@@ -91,7 +98,7 @@ Use `OfflineDiarizerManager` when you need offline DER parity or want to run the
 
 `DiarizerTimeline` accumulates per-frame speaker probabilities and derives `DiarizerSpeaker` segments. Each speaker has `finalizedSegments` (confirmed) and `tentativeSegments` (may be revised). Segments expose `startTime`, `endTime`, `duration`, and `isFinalized`.
 
-**`DiarizerTimelineConfig`** controls post-processing (onset/offset thresholds default to 0.5, min segment/gap duration, optional rolling window cap). Both diarizers accept this at init.
+**`DiarizerTimelineConfig`** controls post-processing (onset/offset thresholds default to 0.5, min segment/gap duration, optional rolling window cap, and `storeSegments` for emit-only mode that skips creating `DiarizerSpeaker` objects entirely). Both diarizers accept this at init. See [DiarizerTimeline.md](Diarization/DiarizerTimeline.md#emit-only-mode-storesegments--false) for the emit-only mode contract.
 
 **Speaker Management:**
 - `upsertSpeaker(named:atIndex:) -> DiarizerSpeaker?`
@@ -127,11 +134,10 @@ try await diarizer.initialize(mainModelPath: modelURL)
 Streaming diarization using LS-EEND. Variable speaker slots, 8 kHz input, 100 ms frame duration, 20.7% DER on AMI SDM.
 
 ```swift
-let diarizer = LSEENDDiarizer(computeUnits: .cpuOnly)
-try await diarizer.initialize(variant: .dihard3)
+let diarizer = try await LSEENDDiarizer(variant: .dihard3)
 ```
 
-**Variants:** ami, callhome, dihard2, dihard3 (via `LSEENDModelDescriptor.loadFromHuggingFace(variant:)`).
+**Variants:** ami, callhome, dihard2, dihard3 (via `LSEENDModel.loadFromHuggingFace(variant:stepSize:)`). The optional `LSEENDStepSize` selects how many output frames the model commits per CoreML call (`.step100ms` … `.step500ms`); smaller steps reduce latency, larger steps raise throughput.
 
 Call `finalizeSession()` at end-of-stream to flush pending audio before reading the final timeline.
 
@@ -255,3 +261,173 @@ await manager.reset()
 **Performance:**
 - Real-time factor: ~5x RTF (160ms), ~12x RTF (320ms) on Apple Silicon
 - WER: ~8% (160ms), ~5% (320ms) on LibriSpeech test-clean
+
+### SlidingWindowAsrManager
+Real-time sliding window ASR with overlap and cancellation support.
+
+**Key Methods:**
+- `init(models:config:) async throws`
+  - Initialize with ASR models and configuration
+- `transcribeChunk(_:isLastChunk:) async throws -> ASRResult`
+  - Process audio chunk with sliding window overlap
+  - Returns accumulated transcript with proper handling of chunk boundaries
+- `reset()`
+  - Reset internal state for new session
+
+**Configuration:**
+- Default chunk size: ~14.96 seconds
+- Default overlap: 2.0 seconds
+- Supports cancellation via Task cancellation
+
+**Usage:**
+```swift
+let manager = try await SlidingWindowAsrManager()
+
+for audioChunk in audioStream {
+    let result = try await manager.transcribeChunk(
+        audioChunk,
+        isLastChunk: false
+    )
+    print("Partial: \(result.text)")
+}
+
+// Process final chunk
+let final = try await manager.transcribeChunk(lastChunk, isLastChunk: true)
+print("Final: \(final.text)")
+```
+
+### StreamingNemotronAsrManager
+NVIDIA Nemotron streaming ASR with encoder cache for low-latency processing.
+
+**Key Methods:**
+- `init(chunkSize:configuration:) async throws`
+  - Initialize with chunk size (160ms, 320ms, or 1600ms)
+- `loadModels(modelDir:) async throws`
+  - Load CoreML models from directory
+- `transcribe(_:) async throws -> String`
+  - Process audio and return transcript
+- `reset() async`
+  - Reset encoder cache and decoder state
+
+**Chunk Sizes:**
+- `.ms160` — 160ms chunks, lowest latency
+- `.ms320` — 320ms chunks, balanced
+- `.ms1600` — 1600ms chunks, highest throughput
+
+**Performance:**
+- Real-time factor: ~0.2x on Apple Silicon
+- Maintains encoder cache across chunks for efficiency
+
+### Qwen3AsrManager
+Qwen3-based speech recognition with Whisper mel spectrogram frontend.
+
+**Key Methods:**
+- `init(modelDir:configuration:) async throws`
+  - Initialize with model directory and CoreML configuration
+- `transcribe(_:) async throws -> String`
+  - Transcribe audio samples (16kHz mono Float32)
+- `transcribe(_:) async throws -> String`
+  - Transcribe from audio file URL
+
+**Features:**
+- Whisper-style mel spectrogram processing
+- Multi-language support
+- Experimental high-accuracy model
+
+## Text-to-Speech (TTS)
+
+### KokoroAneManager
+ANE-resident Kokoro 82M — splits the graph into 7 CoreML stages so the
+ANE-friendly layers stay resident on the Neural Engine. **3-11× RTFx** on
+Apple Silicon. See [KokoroAne](TTS/KokoroAne.md) for the full pipeline.
+
+**Key Methods:**
+- `init(defaultVoice:directory:computeUnits:modelStore:)`
+  - Defaults: `defaultVoice = "af_heart"`, `computeUnits = .default`
+    (per-stage assignment matching the laishere upstream)
+- `initialize(preloadVoices:) async throws`
+  - Download (if missing) and load all 7 `.mlmodelc` bundles + `vocab.json`
+    + `af_heart.bin`
+- `synthesize(text:voice:speed:) async throws -> Data`
+  - One-shot text → 24 kHz mono 16-bit PCM WAV
+- `synthesizeDetailed(text:voice:speed:) async throws -> KokoroAneSynthesisResult`
+  - Returns samples + per-stage timings
+- `synthesizeFromPhonemes(_:voice:speed:) async throws -> Data`
+  - Bypass G2P; feed an already-IPA phoneme string directly
+- `synthesizeFromPhonemesDetailed(_:voice:speed:) async throws -> KokoroAneSynthesisResult`
+- `setDefaultVoice(_:)` — override default voice for subsequent calls
+- `isAvailable() async -> Bool`
+- `cleanup() async` — drop loaded mlmodelcs + voice packs
+
+**Configuration:**
+- `defaultVoice`: voice id (default `"af_heart"` — only voice currently shipped)
+- `directory`: optional cache directory override
+- `computeUnits`: `KokoroAneComputeUnits` (per-stage `MLComputeUnits`)
+  - `.default` — Albert/PostAlbert/Alignment/Vocoder on `cpuAndNeuralEngine`,
+    Prosody/Noise/Tail on `.all`
+  - `.cpuAndGpu` — skip ANE entirely (debug baseline)
+- `speed`: speech rate multiplier (default `1.0`)
+
+**Limits:**
+- ≤ 510 IPA phonemes per call (no built-in chunker)
+- Single voice (`af_heart`)
+- No SSML / custom lexicon / markdown overrides
+
+**Usage:**
+```swift
+let manager = KokoroAneManager()
+try await manager.initialize()
+
+let wav = try await manager.synthesize(text: "Hello from FluidAudio!")
+try wav.write(to: URL(fileURLWithPath: "/tmp/demo.wav"))
+
+// With per-stage timings:
+let detail = try await manager.synthesizeDetailed(text: "Hi.")
+print("samples: \(detail.samples.count) @ \(detail.sampleRate) Hz")
+let t = detail.timings
+print("  albert=\(t.albert) postAlbert=\(t.postAlbert) alignment=\(t.alignment)")
+print("  prosody=\(t.prosody) noise=\(t.noise) vocoder=\(t.vocoder) tail=\(t.tail)")
+print("  total: \(t.totalMs) ms")
+```
+
+**Performance:**
+- Real-time factor: 3-11× RTFx on Apple Silicon
+- Cold load (first ever, ANE compile): ~20 s; warm load: ~0.3 s
+- Output sample rate: 24 kHz
+
+### PocketTtsManager
+Lightweight streaming TTS with voice cloning support.
+
+**Key Methods:**
+- `init(directory:computeUnits:) async throws`
+  - Initialize with optional directory and compute units
+- `synthesize(text:voice:speakerId:) async throws -> [Float]`
+  - Synthesize speech from text
+  - Returns audio samples at 24kHz
+- `synthesizeStreaming(text:voice:speakerId:) -> AsyncThrowingStream<[Float], Error>`
+  - Stream audio chunks as they are generated
+- `cloneVoice(from:name:) async throws -> String`
+  - Clone voice from reference audio
+  - Returns voice ID for later use
+- `cleanup()`
+  - Release models and free memory
+
+**Features:**
+- Streaming synthesis for long text
+- Voice cloning from short audio samples
+- Lower memory footprint than Kokoro
+- Faster synthesis for real-time applications
+
+**Usage:**
+```swift
+let manager = try await PocketTtsManager()
+
+// Basic synthesis
+let audio = try await manager.synthesize(text: "Hello world")
+
+// Streaming synthesis
+for try await chunk in manager.synthesizeStreaming(text: longText) {
+    // Play audio chunk immediately
+    playAudio(chunk)
+}
+```

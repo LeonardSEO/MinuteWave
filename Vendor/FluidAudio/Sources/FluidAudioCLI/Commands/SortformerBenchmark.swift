@@ -5,13 +5,13 @@ import Foundation
 /// Sortformer streaming diarization benchmark for evaluating real-time performance
 enum SortformerBenchmark {
     private static let logger = AppLogger(category: "SortformerBench")
+    private static let derFrameStepSeconds: Double = 0.01
 
     typealias Dataset = DiarizationBenchmarkUtils.Dataset
     typealias BenchmarkResult = DiarizationBenchmarkUtils.BenchmarkResult
 
     static func printUsage() {
-        print(
-            """
+        let usage = """
             Sortformer Benchmark Command
 
             Evaluates Sortformer streaming speaker diarization on various corpora.
@@ -19,23 +19,29 @@ enum SortformerBenchmark {
             Usage: fluidaudio sortformer-benchmark [options]
 
             Options:
-                --dataset <name>         Dataset to use: ami, voxconverse, callhome (default: ami)
-                --single-file <name>     Process a specific meeting (e.g., ES2004a)
-                --max-files <n>          Maximum number of files to process
-                --threshold <value>      Speaker activity threshold (default: 0.5)
-                --model <path>           Path to Sortformer.mlpackage
-                --nvidia-low-latency     Use NVIDIA 1.04s latency config (20.57% DER target)
-                --nvidia-high-latency            Use NVIDIA 30.4s latency config (20.57% DER target)
-                --gradient-descent       Use Gradient Descent config (downloads from HuggingFace by default)
-                --hf                     Download models from HuggingFace (clears cache first)
-                --local                  Use local models instead of HuggingFace (for --gradient-descent)
-                --output <file>          Output JSON file for results
-                --progress <file>        Progress file for resuming (default: .sortformer_progress.json)
-                --resume                 Resume from previous progress file
-                --verbose                Enable verbose output
-                --debug                  Enable debug mode
-                --auto-download          Auto-download AMI dataset if missing
-                --help                   Show this help message
+                --dataset <name>            Dataset to use: ami, voxconverse, callhome (default: ami)
+                --single-file <name>        Process a specific meeting (e.g., ES2004a)
+                --max-files <n>             Maximum number of files to process
+                --threshold <value>         Speaker activity threshold (default: 0.5)
+                --silence-threshold <0-1>   Silence detection threshold (default: 0.2)
+                --scores-boost-latest <fl>  Boost factor for latest frames (default: 0.05)
+                --strong-boost-rate <0-1>   Strong boost rate (default: 0.75)
+                --weak-boost-rate <fl>      Weak boost rate (default: 1.5)
+                --min-pos-scores-rate <0-1> Minimum positive scores rate (default: 0.5)
+                --spkcache-sil-frames <n>   Silence frames per speaker in cache (default: 3)
+                --model <path>              Path to Sortformer.mlpackage
+                --nvidia-low-latency        Use NVIDIA 1.04s latency config
+                --nvidia-high-latency       Use NVIDIA 30.4s latency config
+                --gradient-descent          Use Gradient Descent config (default)
+                --hf                        Use HuggingFace/cache-backed model loading
+                --local                     Use local mlpackage loading
+                --output <file>             Output JSON file for results
+                --progress <file>           Progress file for resuming (default: .sortformer_progress.json)
+                --resume                    Resume from previous progress file
+                --verbose                   Enable verbose output
+                --debug                     Enable debug mode
+                --auto-download             Auto-download AMI dataset if missing
+                --help                      Show this help message
 
             Performance Targets:
                 DER ~11%   (NVIDIA benchmark on DI-HARD III)
@@ -52,7 +58,9 @@ enum SortformerBenchmark {
                 fluidaudio sortformer-benchmark --single-file ES2004a \\
                     --preprocessor ./models/SortformerPreprocessor.mlpackage \\
                     --model ./models/Sortformer.mlpackage
-            """)
+            """
+        fputs(usage, stderr)
+        fflush(stderr)
     }
 
     static func run(arguments: [String]) async {
@@ -67,12 +75,19 @@ enum SortformerBenchmark {
         var autoDownload = false
         var useNvidiaLowLatency = false
         var useNvidiaHighLatency = false
-        var useGradientDescent = false
-        var useHuggingFace = false
+        var useHuggingFace = true
         var useLocalModels = false
         var progressFile: String = ".sortformer_progress.json"
         var resumeFromProgress = false
         var dataset: Dataset = .ami
+
+        // SortformerConfig tuning fields
+        var silenceThreshold: Float?
+        var scoresBoostLatest: Float?
+        var strongBoostRate: Float?
+        var weakBoostRate: Float?
+        var minPosScoresRate: Float?
+        var spkcacheSilFramesPerSpk: Int?
 
         var i = 0
         while i < arguments.count {
@@ -129,7 +144,38 @@ enum SortformerBenchmark {
             case "--nvidia-low-latency":
                 useNvidiaLowLatency = true
             case "--gradient-descent":
-                useGradientDescent = true
+                // gradient-descent uses the default SortformerConfig which is already selected
+                break
+            case "--silence-threshold":
+                if i + 1 < arguments.count {
+                    silenceThreshold = Float(arguments[i + 1])
+                    i += 1
+                }
+            case "--scores-boost-latest":
+                if i + 1 < arguments.count {
+                    scoresBoostLatest = Float(arguments[i + 1])
+                    i += 1
+                }
+            case "--strong-boost-rate":
+                if i + 1 < arguments.count {
+                    strongBoostRate = Float(arguments[i + 1])
+                    i += 1
+                }
+            case "--weak-boost-rate":
+                if i + 1 < arguments.count {
+                    weakBoostRate = Float(arguments[i + 1])
+                    i += 1
+                }
+            case "--min-pos-scores-rate":
+                if i + 1 < arguments.count {
+                    minPosScoresRate = Float(arguments[i + 1])
+                    i += 1
+                }
+            case "--spkcache-sil-frames":
+                if i + 1 < arguments.count {
+                    spkcacheSilFramesPerSpk = Int(arguments[i + 1])
+                    i += 1
+                }
             case "--hf":
                 useHuggingFace = true
             case "--local":
@@ -143,9 +189,10 @@ enum SortformerBenchmark {
             i += 1
         }
 
-        // Gradient descent uses HuggingFace by default unless --local is specified
-        if useGradientDescent && !useLocalModels {
-            useHuggingFace = true
+        // Benchmarks should prefer the cache-backed Hugging Face loader by default.
+        // `--local` explicitly opts out to local mlpackage loading.
+        if useLocalModels {
+            useHuggingFace = false
         }
 
         print("Starting Sortformer Benchmark")
@@ -159,7 +206,8 @@ enum SortformerBenchmark {
 
         let modeDesc =
             useHuggingFace
-            ? "HuggingFace models" : "Combined Pipeline"
+            ? "HuggingFace/cache-backed models"
+            : "Local mlpackage"
         print("   Mode: \(modeDesc)")
         print("   Preprocessing: Native Swift mel spectrogram")
 
@@ -178,12 +226,6 @@ enum SortformerBenchmark {
         let pipelineURL = URL(fileURLWithPath: modelPath ?? defaultPipeline)
 
         print("   Pipeline: \(pipelineURL.path)")
-
-        // Check models exist
-        guard useHuggingFace || FileManager.default.fileExists(atPath: pipelineURL.path) else {
-            print("ERROR: Pipeline model not found: \(pipelineURL.path)")
-            return
-        }
 
         // Download dataset if needed
         if autoDownload && dataset == .ami {
@@ -242,10 +284,16 @@ enum SortformerBenchmark {
         } else if useNvidiaLowLatency {
             config = SortformerConfig.balancedV2_1
         } else {
-            config = SortformerConfig.default
+            config = SortformerConfig.default  // gradient-descent uses the default
         }
         config.debugMode = debugMode
         config.predScoreThreshold = threshold
+        if let v = silenceThreshold { config.silenceThreshold = v }
+        if let v = scoresBoostLatest { config.scoresBoostLatest = v }
+        if let v = strongBoostRate { config.strongBoostRate = v }
+        if let v = weakBoostRate { config.weakBoostRate = v }
+        if let v = minPosScoresRate { config.minPosScoresRate = v }
+        if let v = spkcacheSilFramesPerSpk { config.spkcacheSilFramesPerSpk = v }
         let diarizer = SortformerDiarizer(config: config)
 
         do {
@@ -253,6 +301,10 @@ enum SortformerBenchmark {
                 let models = try await SortformerModels.loadFromHuggingFace(config: config)
                 diarizer.initialize(models: models)
             } else {
+                guard FileManager.default.fileExists(atPath: pipelineURL.path) else {
+                    print("ERROR: Local pipeline model not found: \(pipelineURL.path)")
+                    return
+                }
                 try await diarizer.initialize(
                     mainModelPath: pipelineURL
                 )
@@ -406,10 +458,10 @@ enum SortformerBenchmark {
             // Load ground truth from RTTM file (matches Python's approach)
             var groundTruth = loadRTTMGroundTruth(for: meetingName, dataset: dataset)
 
-            // Fall back to AMI XML annotations if no RTTM available (AMI only)
+            // Fall back to AMI word-aligned annotations if no RTTM available (AMI only)
             if groundTruth.isEmpty && dataset == .ami {
-                print("   [RTTM] No RTTM file, falling back to AMI annotations")
-                groundTruth = await AMIParser.loadAMIGroundTruth(
+                print("   [RTTM] No RTTM file, falling back to AMI word-aligned annotations")
+                groundTruth = await AMIParser.loadWordAlignedGroundTruth(
                     for: meetingName,
                     duration: duration
                 )
@@ -420,19 +472,25 @@ enum SortformerBenchmark {
                 return nil
             }
 
-            // Get filtered predictions for simple DER calculation (matches Python/NeMo)
-            let filteredPredictions = result.finalizedPredictions
-
-            // Calculate DER using simple frame-level approach (matches NeMo evaluation)
-            // Frame shift is 0.08s (80ms) to match NeMo's subsampling_factor * window_stride
-            let simpleMetrics = calculateSimpleDER(
-                predictions: filteredPredictions,
-                numFrames: result.numFinalizedFrames,
-                numSpeakers: result.config.numSpeakers,
-                groundTruth: groundTruth,
-                threshold: threshold,
-                frameShift: 0.08  // 80ms frames like NeMo
+            let referenceSegments = groundTruth.map {
+                DERSpeakerSegment(
+                    speaker: $0.speakerId,
+                    start: Double($0.startTimeSeconds),
+                    end: Double($0.endTimeSeconds)
+                )
+            }
+            let hypothesisSegments = segmentsToDERSegments(segments)
+            let derResult = DiarizationDER.compute(
+                ref: referenceSegments,
+                hyp: hypothesisSegments,
+                frameStep: derFrameStepSeconds,
+                collar: 0
             )
+            let totalRefSpeech = max(derResult.totalRefSpeech, .leastNonzeroMagnitude)
+            let derPercent = Float(derResult.der * 100)
+            let missPercent = Float(derResult.miss / totalRefSpeech * 100)
+            let faPercent = Float(derResult.falseAlarm / totalRefSpeech * 100)
+            let sePercent = Float(derResult.confusion / totalRefSpeech * 100)
 
             // Count detected speakers
             let detectedSpeakers = segments.reduce(into: Set<Int>()) {
@@ -451,10 +509,10 @@ enum SortformerBenchmark {
 
             return BenchmarkResult(
                 meetingName: meetingName,
-                der: simpleMetrics.der,
-                missRate: simpleMetrics.miss,
-                falseAlarmRate: simpleMetrics.fa,
-                speakerErrorRate: simpleMetrics.se,
+                der: derPercent,
+                missRate: missPercent,
+                falseAlarmRate: faPercent,
+                speakerErrorRate: sePercent,
                 rtfx: rtfx,
                 processingTime: processingTime,
                 totalFrames: result.numFinalizedFrames,
@@ -527,135 +585,18 @@ enum SortformerBenchmark {
         return segments
     }
 
-    // MARK: - Simple Frame-Level DER (matches Python's calculation)
-
-    /// Calculate DER using simple frame-level binary comparison like Python
-    /// This matches the NeMo evaluation approach without collar or complex segment overlap
-    private static func calculateSimpleDER(
-        predictions: [Float],
-        numFrames: Int,
-        numSpeakers: Int,
-        groundTruth: [TimedSpeakerSegment],
-        threshold: Float,
-        frameShift: Float  // 0.08 for 80ms frames
-    ) -> (der: Float, miss: Float, fa: Float, se: Float) {
-        // Create reference binary matrix [numFrames, numSpeakers]
-        var refBinary = [[Float]](repeating: [Float](repeating: 0.0, count: numSpeakers), count: numFrames)
-
-        // Map ground truth speakers to indices
-        let speakerLabels = Array(Set(groundTruth.map { $0.speakerId })).sorted()
-        var speakerMap = [String: Int]()
-        for (idx, label) in speakerLabels.enumerated() {
-            if idx < numSpeakers {
-                speakerMap[label] = idx
+    private static func segmentsToDERSegments(
+        _ segments: [[DiarizerSegment]]
+    ) -> [DERSpeakerSegment] {
+        segments.flatMap { speakerSegments in
+            speakerSegments.map { segment in
+                DERSpeakerSegment(
+                    speaker: segment.speakerLabel,
+                    start: Double(segment.startTime),
+                    end: Double(segment.endTime)
+                )
             }
         }
-
-        // Fill reference binary from ground truth segments
-        for segment in groundTruth {
-            guard let spkIdx = speakerMap[segment.speakerId] else { continue }
-            let startFrame = max(0, min(Int(segment.startTimeSeconds / frameShift), numFrames))
-            let endFrame = max(0, min(Int(segment.endTimeSeconds / frameShift), numFrames))
-            for frame in startFrame..<endFrame {
-                refBinary[frame][spkIdx] = 1.0
-            }
-        }
-
-        // Create prediction binary matrix
-        var predBinary = [[Float]](repeating: [Float](repeating: 0.0, count: numSpeakers), count: numFrames)
-        for frame in 0..<numFrames {
-            for spk in 0..<numSpeakers {
-                let idx = frame * numSpeakers + spk
-                if idx < predictions.count {
-                    predBinary[frame][spk] = predictions[idx] > threshold ? 1.0 : 0.0
-                }
-            }
-        }
-
-        // Try all permutations to find best DER
-        let permutations = generatePermutations(numSpeakers)
-        var bestDER: Float = .infinity
-        var bestMiss: Float = 0
-        var bestFA: Float = 0
-        var bestSE: Float = 0
-
-        for perm in permutations {
-            var missFrames: Float = 0
-            var faFrames: Float = 0
-            var seFrames: Float = 0
-            var totalRefSpeech: Float = 0
-
-            for frame in 0..<numFrames {
-                let refSpeech = refBinary[frame].contains(where: { $0 > 0 })
-                var predSpeechPermuted = false
-                for spk in 0..<numSpeakers {
-                    if predBinary[frame][perm[spk]] > 0 {
-                        predSpeechPermuted = true
-                        break
-                    }
-                }
-
-                if refSpeech {
-                    totalRefSpeech += 1
-                }
-
-                if refSpeech && !predSpeechPermuted {
-                    missFrames += 1
-                } else if !refSpeech && predSpeechPermuted {
-                    faFrames += 1
-                } else if refSpeech && predSpeechPermuted {
-                    // Calculate speaker error
-                    var refSpks = Set<Int>()
-                    var predSpks = Set<Int>()
-                    for spk in 0..<numSpeakers {
-                        if refBinary[frame][spk] > 0 {
-                            refSpks.insert(spk)
-                        }
-                        if predBinary[frame][perm[spk]] > 0 {
-                            predSpks.insert(spk)
-                        }
-                    }
-                    let symDiff = refSpks.symmetricDifference(predSpks)
-                    seFrames += Float(symDiff.count) / 2.0
-                }
-            }
-
-            if totalRefSpeech > 0 {
-                let der = (missFrames + faFrames + seFrames) / totalRefSpeech * 100
-                if der < bestDER {
-                    bestDER = der
-                    bestMiss = missFrames / totalRefSpeech * 100
-                    bestFA = faFrames / totalRefSpeech * 100
-                    bestSE = seFrames / totalRefSpeech * 100
-                }
-            }
-        }
-
-        return (bestDER, bestMiss, bestFA, bestSE)
-    }
-
-    /// Generate all permutations of 0..<n
-    private static func generatePermutations(_ n: Int) -> [[Int]] {
-        if n == 0 { return [[]] }
-        if n == 1 { return [[0]] }
-
-        var result: [[Int]] = []
-        var arr = Array(0..<n)
-
-        func permute(_ start: Int) {
-            if start == n {
-                result.append(arr)
-                return
-            }
-            for i in start..<n {
-                arr.swapAt(start, i)
-                permute(start + 1)
-                arr.swapAt(start, i)
-            }
-        }
-
-        permute(0)
-        return result
     }
 }
 #endif

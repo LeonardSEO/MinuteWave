@@ -1,4 +1,4 @@
-<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-03-27 -->
+<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-05-28 -->
 
 # AGENTS.md — Sources/AINoteTakerApp
 
@@ -38,7 +38,7 @@ macOS SwiftUI app code for MinuteWave. `AppViewModel` is the state hub, `AppCont
 - Test: `swift test`
 - App bundle: `./scripts/build_dev_app_bundle.sh debug`
 - DMG: `./scripts/build_dmg.sh release`
-- Status on 2026-03-27: the commands above are the correct entry points, but current HEAD fails while compiling `FluidAudio`
+- Status on 2026-05-28: `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` pass locally after the vendored `FluidAudio` v0.14.7 upgrade. Remaining local warnings are from the vendored FluidAudio exclude path and Homebrew SQLCipher deployment metadata.
 
 ## Code style & conventions
 - Keep `AppViewModel` as the orchestrator; do not move persistence or provider side effects into SwiftUI views.
@@ -67,6 +67,6 @@ macOS SwiftUI app code for MinuteWave. `AppViewModel` is the state hub, `AppCont
 - Local-first workflows should degrade safely to microphone-only or offline-ready states when permissions/services are unavailable.
 
 ## When stuck
-- Check root `AGENTS.md` first for repo-wide constraints and the current build blocker.
+- Check root `AGENTS.md` first for repo-wide constraints and the current validation status.
 - Use `AppViewModel`, `SQLiteRepository`, and `MainWorkspaceView` as the first references before inventing new patterns.
 - Read `docs/XcodePermissionsSetup.md` before changing permission or packaging behavior.

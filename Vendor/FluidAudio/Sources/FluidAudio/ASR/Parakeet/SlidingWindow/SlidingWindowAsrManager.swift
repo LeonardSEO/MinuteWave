@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+@preconcurrency import CoreML
 import Foundation
 import OSLog
 
@@ -22,6 +23,9 @@ public actor SlidingWindowAsrManager {
     private var asrManager: AsrManager?
     private var recognizerTask: Task<Void, Error>?
     private var audioSource: AudioSource = .microphone
+
+    // Decoder state for this sliding window session
+    private var decoderState: TdtDecoderState?
 
     // Sliding window state
     private var segmentIndex: Int = 0
@@ -111,34 +115,57 @@ public actor SlidingWindowAsrManager {
         )
     }
 
-    /// Start the sliding-window ASR engine
-    /// This will download models if needed and begin processing
-    /// - Parameter source: The audio source to use (default: microphone)
-    public func start(source: AudioSource = .microphone) async throws {
-        logger.info("Starting sliding-window ASR engine for source: \(String(describing: source))...")
-
-        // Initialize ASR models
-        let models = try await AsrModels.downloadAndLoad()
-        try await start(models: models, source: source)
+    /// Load ASR models (downloads if needed)
+    ///
+    /// If you need custom MLModelConfiguration, use `AsrModels.downloadAndLoad(configuration:)`
+    /// to pre-load models and then call `loadModels(_:)`.
+    ///
+    /// - Parameters:
+    ///   - to: Optional cache directory (default: system cache)
+    ///   - progressHandler: Optional download progress callback
+    public func loadModels(
+        to directory: URL? = nil,
+        progressHandler: DownloadUtils.ProgressHandler? = nil
+    ) async throws {
+        logger.info("Loading ASR models...")
+        let models = try await AsrModels.downloadAndLoad(
+            to: directory,
+            progressHandler: progressHandler
+        )
+        try await loadModels(models)
     }
 
-    /// Start the sliding-window ASR engine with pre-loaded models
-    /// - Parameters:
-    ///   - models: Pre-loaded ASR models to use
-    ///   - source: The audio source to use (default: microphone)
-    public func start(models: AsrModels, source: AudioSource = .microphone) async throws {
-        logger.info(
-            "Starting sliding-window ASR engine with pre-loaded models for source: \(String(describing: source))..."
-        )
+    /// Load pre-loaded ASR models
+    /// - Parameter models: Pre-loaded ASR models to use
+    public func loadModels(_ models: AsrModels) async throws {
+        logger.info("Loading SlidingWindowAsrManager with provided models")
+
+        // Configure ASR manager with provided models
+        asrManager = AsrManager(config: config.asrConfig)
+        try await asrManager?.loadModels(models)
+
+        logger.info("SlidingWindowAsrManager loaded successfully")
+    }
+
+    /// Start the sliding-window streaming engine
+    ///
+    /// Models must be loaded first via `loadModels()` or `loadModels(_:)`
+    ///
+    /// - Parameter source: The audio source to use (default: microphone)
+    /// - Throws: ASRError.notInitialized if models are not loaded
+    public func startStreaming(source: AudioSource = .microphone) async throws {
+        guard asrManager != nil else {
+            throw ASRError.notInitialized
+        }
+
+        logger.info("Starting sliding-window ASR engine for source: \(String(describing: source))...")
 
         self.audioSource = source
 
-        // Initialize ASR manager with provided models
-        asrManager = AsrManager(config: config.asrConfig)
-        try await asrManager?.initialize(models: models)
-
-        // Reset decoder state for the specific source
-        try await asrManager?.resetDecoderState(for: source)
+        // Create decoder state with correct layer count for this model
+        if let mgr = asrManager {
+            self.decoderState = TdtDecoderState.make(decoderLayers: await mgr.decoderLayerCount)
+        }
 
         // Reset sliding window state
         segmentIndex = 0
@@ -159,6 +186,9 @@ public actor SlidingWindowAsrManager {
                     // Append to raw sample buffer and attempt windowed processing
                     await self.appendSamplesAndProcess(samples)
                 } catch {
+                    if error is CancellationError || Task.isCancelled {
+                        return
+                    }
                     let streamingError = SlidingWindowAsrError.audioBufferProcessingFailed(error)
                     logger.error(
                         "Audio buffer processing error: \(streamingError.localizedDescription)")
@@ -220,16 +250,12 @@ public actor SlidingWindowAsrManager {
             if !confirmedTranscript.isEmpty { parts.append(confirmedTranscript) }
             if !volatileTranscript.isEmpty { parts.append(volatileTranscript) }
             finalText = parts.joined(separator: " ")
-        } else if let asrManager = asrManager, !accumulatedTokens.isEmpty {
-            let finalResult = await asrManager.processTranscriptionResult(
-                tokenIds: accumulatedTokens,
-                timestamps: [],
-                confidences: [],  // No per-token confidences needed for final text
-                encoderSequenceLength: 0,
-                audioSamples: [],  // Not needed for final text conversion
-                processingTime: 0
-            )
-            finalText = finalResult.text
+        } else if !accumulatedTokens.isEmpty,
+            let reconstructedText = await asrManager?.convertTokensToText(accumulatedTokens)
+        {
+            // finish() only needs the merged text. Re-entering ASRResult processing here
+            // fabricates a missing-confidence warning even though no confidence score is required.
+            finalText = reconstructedText
         } else {
             var parts: [String] = []
             if !confirmedTranscript.isEmpty { parts.append(confirmedTranscript) }
@@ -251,9 +277,9 @@ public actor SlidingWindowAsrManager {
         bufferStartIndex = 0
         nextWindowCenterStart = 0
 
-        // Reset decoder state for the current audio source
-        if let asrManager = asrManager {
-            try await asrManager.resetDecoderState(for: audioSource)
+        // Reset decoder state
+        if let mgr = asrManager {
+            self.decoderState = TdtDecoderState.make(decoderLayers: await mgr.decoderLayerCount)
         }
 
         // Reset sliding window state
@@ -262,6 +288,15 @@ public actor SlidingWindowAsrManager {
         accumulatedTokens.removeAll()
 
         logger.info("SlidingWindowAsrManager reset for source: \(String(describing: self.audioSource))")
+    }
+
+    /// Release all loaded models and free memory.
+    /// The manager cannot be used for transcription after this until `start()` is called again.
+    public func cleanup() async {
+        await cancel()
+        await asrManager?.cleanup()
+        asrManager = nil
+        logger.info("SlidingWindowAsrManager resources cleaned up")
     }
 
     /// Cancel streaming without getting results
@@ -366,44 +401,56 @@ public actor SlidingWindowAsrManager {
         windowStartSample: Int,
         isLastChunk: Bool = false
     ) async {
-        guard let asrManager = asrManager else { return }
-
         do {
             let chunkStartTime = Date()
 
             // Start frame offset is now handled by decoder's timeJump mechanism
 
             // Call AsrManager directly with deduplication
-            let (tokens, timestamps, confidences, _) = try await asrManager.transcribeChunk(
-                windowSamples,
-                source: audioSource,
-                previousTokens: accumulatedTokens,
-                isLastChunk: isLastChunk
-            )
+            guard var state = decoderState else {
+                logger.error("Decoder state not initialized")
+                return
+            }
+
+            guard
+                let result = try await asrManager?.transcribeChunk(
+                    windowSamples,
+                    decoderState: &state,
+                    previousTokens: accumulatedTokens,
+                    isLastChunk: isLastChunk
+                )
+            else { return }
+
+            // Update stored decoder state
+            self.decoderState = state
+
+            let (tokens, timestamps, confidences, _) = result
 
             let adjustedTimestamps = Self.applyGlobalFrameOffset(
                 to: timestamps,
                 windowStartSample: windowStartSample
             )
 
-            // Update state
-            accumulatedTokens.append(contentsOf: tokens)
-            lastProcessedFrame = max(lastProcessedFrame, adjustedTimestamps.max() ?? 0)
-            segmentIndex += 1
-
             let processingTime = Date().timeIntervalSince(chunkStartTime)
-            processedChunks += 1
 
             // Convert only the current chunk tokens to text for clean incremental updates
             // The final result will use all accumulated tokens for proper deduplication
-            let interim = await asrManager.processTranscriptionResult(
-                tokenIds: tokens,  // Only current chunk tokens for progress updates
-                timestamps: adjustedTimestamps,
-                confidences: confidences,
-                encoderSequenceLength: 0,
-                audioSamples: windowSamples,
-                processingTime: processingTime
-            )
+            guard
+                let interim = await asrManager?.processTranscriptionResult(
+                    tokenIds: tokens,  // Only current chunk tokens for progress updates
+                    timestamps: adjustedTimestamps,
+                    confidences: confidences,
+                    encoderSequenceLength: 0,
+                    audioSamples: windowSamples,
+                    processingTime: processingTime
+                )
+            else { return }
+
+            // Update state only after all required async calls complete successfully
+            accumulatedTokens.append(contentsOf: tokens)
+            lastProcessedFrame = max(lastProcessedFrame, adjustedTimestamps.max() ?? 0)
+            segmentIndex += 1
+            processedChunks += 1
 
             logger.debug(
                 "Chunk \(self.processedChunks): '\(interim.text)', time: \(String(format: "%.3f", processingTime))s)"
@@ -416,16 +463,17 @@ public actor SlidingWindowAsrManager {
 
             // Rescore before updating transcript state so finish() returns rescored content
             var displayResult = interim
-            if shouldConfirm && vocabBoostingEnabled {
-                let chunkLocalTimings =
-                    await asrManager.processTranscriptionResult(
-                        tokenIds: tokens,
-                        timestamps: timestamps,  // Original chunk-local timestamps (not adjusted)
-                        confidences: confidences,
-                        encoderSequenceLength: 0,
-                        audioSamples: windowSamples,
-                        processingTime: processingTime
-                    ).tokenTimings ?? []
+            if shouldConfirm && vocabBoostingEnabled,
+                let chunkLocalResult = await asrManager?.processTranscriptionResult(
+                    tokenIds: tokens,
+                    timestamps: timestamps,  // Original chunk-local timestamps (not adjusted)
+                    confidences: confidences,
+                    encoderSequenceLength: 0,
+                    audioSamples: windowSamples,
+                    processingTime: processingTime
+                )
+            {
+                let chunkLocalTimings = chunkLocalResult.tokenTimings ?? []
 
                 if let rescored = await applyVocabularyRescoring(
                     text: interim.text,
@@ -458,6 +506,9 @@ public actor SlidingWindowAsrManager {
             updateContinuation?.yield(update)
 
         } catch {
+            if error is CancellationError || Task.isCancelled {
+                return
+            }
             let streamingError = SlidingWindowAsrError.modelProcessingFailed(error)
             logger.error("Model processing error: \(streamingError.localizedDescription)")
 
@@ -615,25 +666,11 @@ public actor SlidingWindowAsrManager {
 
     /// Reset decoder state for error recovery
     private func resetDecoderForRecovery() async {
-        if let asrManager = asrManager {
-            do {
-                try await asrManager.resetDecoderState(for: audioSource)
-                logger.info("Successfully reset decoder state during error recovery")
-            } catch {
-                logger.error("Failed to reset decoder state during recovery: \(error)")
+        guard let mgr = asrManager else { return }
 
-                // Last resort: try to reinitialize the ASR manager
-                do {
-                    let models = try await AsrModels.downloadAndLoad()
-                    let newAsrManager = AsrManager(config: config.asrConfig)
-                    try await newAsrManager.initialize(models: models)
-                    self.asrManager = newAsrManager
-                    logger.info("Successfully reinitialized ASR manager during error recovery")
-                } catch {
-                    logger.error("Failed to reinitialize ASR manager during recovery: \(error)")
-                }
-            }
-        }
+        // Recreate decoder state
+        self.decoderState = TdtDecoderState.make(decoderLayers: await mgr.decoderLayerCount)
+        logger.info("Successfully reset decoder state during error recovery")
     }
 }
 
@@ -652,6 +689,12 @@ public struct SlidingWindowAsrConfig: Sendable {
 
     /// Confidence threshold for promoting volatile text to confirmed (0.0...1.0)
     public let confirmationThreshold: Double
+
+    /// TDT decoder configuration. When `nil`, `TdtConfig()` is used (blankId 8192, v3 default).
+    /// Pass an explicit value when using a v2 model (blankId 1024) to avoid relying on
+    /// `AsrManager`'s internal blank-token auto-adaptation.
+    public let tdtConfig: TdtConfig?
+
     /// Default configuration aligned with previous API expectations
     public static let `default` = SlidingWindowAsrConfig(
         chunkSeconds: 15.0,
@@ -680,7 +723,8 @@ public struct SlidingWindowAsrConfig: Sendable {
         leftContextSeconds: TimeInterval = 2.0,
         rightContextSeconds: TimeInterval = 2.0,
         minContextForConfirmation: TimeInterval = 10.0,
-        confirmationThreshold: Double = 0.85
+        confirmationThreshold: Double = 0.85,
+        tdtConfig: TdtConfig? = nil
     ) {
         self.chunkSeconds = chunkSeconds
         self.hypothesisChunkSeconds = hypothesisChunkSeconds
@@ -688,6 +732,20 @@ public struct SlidingWindowAsrConfig: Sendable {
         self.rightContextSeconds = rightContextSeconds
         self.minContextForConfirmation = minContextForConfirmation
         self.confirmationThreshold = confirmationThreshold
+        self.tdtConfig = tdtConfig
+    }
+
+    /// Returns a copy of this config with the given TDT configuration applied.
+    public func applying(tdtConfig: TdtConfig) -> SlidingWindowAsrConfig {
+        SlidingWindowAsrConfig(
+            chunkSeconds: chunkSeconds,
+            hypothesisChunkSeconds: hypothesisChunkSeconds,
+            leftContextSeconds: leftContextSeconds,
+            rightContextSeconds: rightContextSeconds,
+            minContextForConfirmation: minContextForConfirmation,
+            confirmationThreshold: confirmationThreshold,
+            tdtConfig: tdtConfig
+        )
     }
 
     /// Backward-compatible convenience initializer used by tests (chunkDuration label)
@@ -724,7 +782,7 @@ public struct SlidingWindowAsrConfig: Sendable {
     var asrConfig: ASRConfig {
         ASRConfig(
             sampleRate: 16000,
-            tdtConfig: TdtConfig()
+            tdtConfig: tdtConfig ?? TdtConfig()
         )
     }
 

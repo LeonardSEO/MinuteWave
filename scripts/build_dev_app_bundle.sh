@@ -11,6 +11,7 @@ RESOURCE_BUNDLE_PATH_BUNDLE="$BUILD_DIR/${APP_NAME}_AINoteTakerApp.bundle"
 APP_BUNDLE_PATH="$ROOT_DIR/.build/AppBundle/${APP_NAME}.app"
 FRAMEWORKS_DIR="$APP_BUNDLE_PATH/Contents/Frameworks"
 PLIST_TEMPLATE_PATH="$ROOT_DIR/Sources/AINoteTakerApp/Resources/AppInfo.plist"
+DEFAULT_ENTITLEMENTS_PATH="$ROOT_DIR/config/MinuteWave.entitlements"
 ICON_SOURCE_PATH_CLEAN="$ROOT_DIR/icon-clean.png"
 ICON_SOURCE_PATH_TRANSPARENT="$ROOT_DIR/icon-removebg-preview.png"
 ICON_SOURCE_PATH_DEFAULT="$ROOT_DIR/icon.png"
@@ -49,6 +50,36 @@ mkdir -p "$FRAMEWORKS_DIR"
 cp "$EXECUTABLE_PATH" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 cp "$PLIST_TEMPLATE_PATH" "$APP_BUNDLE_PATH/Contents/Info.plist"
 
+is_release_build() {
+  [[ "$(printf '%s' "$CONFIGURATION" | tr '[:upper:]' '[:lower:]')" == "release" ]]
+}
+
+copy_info_plist_localizations() {
+  local resources_root="$ROOT_DIR/Sources/AINoteTakerApp/Resources"
+  local copied=0
+
+  while IFS= read -r -d '' strings_path; do
+    local lproj_name
+    lproj_name="$(basename "$(dirname "$strings_path")")"
+    mkdir -p "$APP_BUNDLE_PATH/Contents/Resources/$lproj_name"
+    cp "$strings_path" "$APP_BUNDLE_PATH/Contents/Resources/$lproj_name/InfoPlist.strings"
+    copied=$((copied + 1))
+  done < <(find "$resources_root" -mindepth 2 -maxdepth 2 -path '*/InfoPlist.strings' -print0 | sort -z)
+
+  if [[ "$copied" -eq 0 ]]; then
+    echo "Warning: no InfoPlist.strings localization files found in $resources_root"
+  fi
+}
+
+copy_privacy_manifest() {
+  local privacy_manifest="$ROOT_DIR/Sources/AINoteTakerApp/Resources/PrivacyInfo.xcprivacy"
+  if [[ -f "$privacy_manifest" ]]; then
+    cp "$privacy_manifest" "$APP_BUNDLE_PATH/Contents/Resources/PrivacyInfo.xcprivacy"
+  else
+    echo "Warning: privacy manifest not found at $privacy_manifest"
+  fi
+}
+
 copy_resource_bundle() {
   local bundle_path=""
   if [[ -d "$RESOURCE_BUNDLE_PATH_BUNDLE" ]]; then
@@ -66,6 +97,8 @@ copy_resource_bundle() {
   fi
 }
 
+copy_info_plist_localizations
+copy_privacy_manifest
 copy_resource_bundle
 
 embed_sqlcipher_runtime() {
@@ -87,7 +120,12 @@ embed_sqlcipher_runtime() {
   fi
 
   if [[ ! -f "$linked_sqlcipher" ]]; then
-    echo "Warning: sqlcipher runtime library not found at $linked_sqlcipher"
+    local message="sqlcipher runtime library not found at $linked_sqlcipher"
+    if is_release_build; then
+      echo "Error: $message" >&2
+      exit 1
+    fi
+    echo "Warning: $message"
     return 0
   fi
 
@@ -99,15 +137,20 @@ embed_sqlcipher_runtime() {
   if [[ -n "$linked_libcrypto" && -f "$linked_libcrypto" ]]; then
     local embedded_libcrypto="$FRAMEWORKS_DIR/libcrypto.3.dylib"
     cp "$linked_libcrypto" "$embedded_libcrypto"
-    install_name_tool -id "@rpath/libcrypto.3.dylib" "$embedded_libcrypto" || true
-    install_name_tool -change "$linked_libcrypto" "@rpath/libcrypto.3.dylib" "$embedded_sqlcipher" || true
+    install_name_tool -id "@rpath/libcrypto.3.dylib" "$embedded_libcrypto"
+    install_name_tool -change "$linked_libcrypto" "@rpath/libcrypto.3.dylib" "$embedded_sqlcipher"
   fi
 
-  install_name_tool -id "@rpath/libsqlcipher.dylib" "$embedded_sqlcipher" || true
-  install_name_tool -change "$linked_sqlcipher" "@rpath/libsqlcipher.dylib" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" || true
+  install_name_tool -id "@rpath/libsqlcipher.dylib" "$embedded_sqlcipher"
+  install_name_tool -change "$linked_sqlcipher" "@rpath/libsqlcipher.dylib" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 
   if ! otool -l "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | grep -q "@executable_path/../Frameworks"; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
+  fi
+
+  if is_release_build && ! otool -L "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | grep -q "@rpath/libsqlcipher.dylib"; then
+    echo "Error: release app binary does not reference embedded @rpath/libsqlcipher.dylib" >&2
+    exit 1
   fi
 }
 
@@ -152,6 +195,8 @@ if [[ "$ENABLE_HARDENED_RUNTIME" == "1" ]]; then
 fi
 if [[ -n "$ENTITLEMENTS_PATH" && -f "$ENTITLEMENTS_PATH" ]]; then
   CODESIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PATH")
+elif is_release_build && [[ -f "$DEFAULT_ENTITLEMENTS_PATH" ]]; then
+  CODESIGN_ARGS+=(--entitlements "$DEFAULT_ENTITLEMENTS_PATH")
 fi
 if [[ "$SIGNING_IDENTITY" == "-" && -n "$BUNDLE_ID" ]]; then
   # Keep TCC permission identity stable for ad-hoc builds across updates by
@@ -181,3 +226,6 @@ fi
 echo ""
 echo "Launch with:"
 echo "  open \"$APP_BUNDLE_PATH\""
+echo ""
+echo "Install for stable TCC testing:"
+echo "  ./scripts/install_app_bundle.sh"

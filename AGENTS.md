@@ -1,12 +1,12 @@
 <!-- FOR AI AGENTS - Human readability is a side effect, not a goal -->
 <!-- Managed by agent: keep sections and order; edit content, not structure -->
-<!-- Last updated: 2026-03-27 | Last verified: 2026-03-27 -->
+<!-- Last updated: 2026-05-28 | Last verified: 2026-05-28 -->
 
 # AGENTS.md
 
 **Precedence:** the **closest `AGENTS.md`** to the files you're changing wins. Root holds repo-wide defaults only.
 
-## Commands (verified on 2026-03-27; current HEAD is red)
+## Commands (verified on 2026-05-28)
 > Source: `Package.swift`, `scripts/`, `.github/workflows/release.yml`
 
 | Task | Command | ~Time |
@@ -19,9 +19,9 @@
 | Build app bundle | `./scripts/build_dev_app_bundle.sh debug` | ~4-10m |
 | Build DMG | `./scripts/build_dmg.sh release` | ~5-15m |
 
-- `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` were rerun on 2026-03-27.
-- All three currently fail while compiling `FluidAudio 0.12.1`, specifically `.build/checkouts/FluidAudio/Sources/FluidAudio/ASR/Streaming/StreamingAsrManager.swift`, with Swift concurrency `SendingRisksDataRace` diagnostics.
-- Do not claim local app code is green until that dependency/toolchain issue is resolved.
+- `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` were rerun on 2026-05-28 after the vendored `FluidAudio` upgrade to v0.14.7.
+- The commands pass locally. Known remaining warnings: SwiftPM reports a missing vendored FluidAudio `Frameworks` exclude path, and the local Homebrew SQLCipher dylib advertises a newer macOS build version than the app deployment target.
+- Do not claim release readiness from these checks alone; permission-sensitive behavior still needs real-bundle TCC testing on the target machine.
 
 ## Workflow
 1. Read this file, then load the nearest scoped `AGENTS.md` before editing.
@@ -84,7 +84,8 @@ dist/                   -> generated release artifacts
 - Release workflow lives at `.github/workflows/release.yml`
 - Release job runs on `macos-latest` for git tags matching `v*.*.*`
 - CI installs `create-dmg` and `sqlcipher` with Homebrew before packaging
-- CI signs with Apple Development credentials when secrets exist; otherwise it falls back to ad-hoc signing
+- CI signs with configured Apple signing credentials when secrets exist; otherwise it falls back to ad-hoc signing
+- CI enables hardened runtime for signed release builds and notarizes/staples the DMG when notary secrets are configured
 - Release artifacts are `dist/MinuteWave-macOS.dmg` and `dist/MinuteWave-macOS.dmg.sha256`
 
 ## Key Decisions
@@ -100,7 +101,7 @@ dist/                   -> generated release artifacts
 - Add or update tests for new storage, parsing, security, and state transitions.
 - Keep user-facing strings localized through `L10n`.
 - Reuse existing policies and utilities before adding new helpers or abstractions.
-- Call out the current `FluidAudio` build failure when relevant to validation claims.
+- Call out remaining local build warnings when relevant to validation claims.
 
 ### Ask First
 - Adding or replacing Swift package dependencies.
@@ -112,10 +113,10 @@ dist/                   -> generated release artifacts
 - Commit API keys, database keys, signing material, or sample secrets.
 - Bypass Keychain for real secrets or persist them in app settings.
 - Hardcode untranslated UI strings in SwiftUI views.
-- Claim `swift build` or `swift test` passed until the dependency compile issue is actually fixed.
+- Claim `swift build` or `swift test` passed without fresh command output.
 
 ## Codebase State
-- Current blocker: `FluidAudio 0.12.1` fails to compile under the active toolchain due to Swift concurrency diagnostics in `StreamingAsrManager.swift`.
+- `FluidAudio` is vendored under `Vendor/FluidAudio` and was refreshed to upstream v0.14.7 on 2026-05-28.
 - Tests are concentrated in a single `AINoteTakerAppTests.swift` file; keep new tests grouped but readable until the suite is split.
 - The repo uses the package name `MinuteWave` while the source target remains `AINoteTakerApp`; do not rename casually.
 - `scripts/build_unsigned_dmg.sh` is deprecated; prefer `scripts/build_dmg.sh`.
