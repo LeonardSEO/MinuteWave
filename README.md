@@ -201,9 +201,16 @@ APPLE_NOTARY_PASSWORD="@keychain:AC_PASSWORD" \
 ## Release and CI
 
 - Release workflow: `.github/workflows/release.yml`
+- TestFlight package workflow: `.github/workflows/testflight.yml`
+- GitHub Pages workflow: `.github/workflows/pages.yml`
 - Tag format: `vMAJOR.MINOR.PATCH`
 - Release artifacts: `MinuteWave-macOS.dmg`, `MinuteWave-macOS.dmg.sha256`
 - Release checklist: [`docs/TestFlightReleaseChecklist.md`](docs/TestFlightReleaseChecklist.md)
+- Release secret setup: [`docs/GitHubActionsReleaseSecrets.md`](docs/GitHubActionsReleaseSecrets.md)
+
+Tagged distribution releases require Developer ID signing and notarization
+secrets. Manual smoke builds can still be run without distribution secrets, but
+they are not published as user releases.
 
 ## Troubleshooting
 

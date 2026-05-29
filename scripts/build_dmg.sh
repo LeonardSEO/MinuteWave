@@ -98,6 +98,13 @@ notarize_and_staple_dmg() {
     exit 1
   fi
 
+  if [[ "$SIGNING_IDENTITY" != Developer\ ID\ Application:* && "${ALLOW_NON_DEVELOPER_ID_NOTARIZATION:-0}" != "1" ]]; then
+    echo "Error: direct-download notarization requires a Developer ID Application identity." >&2
+    echo "Current identity: $SIGNING_IDENTITY" >&2
+    echo "Set ALLOW_NON_DEVELOPER_ID_NOTARIZATION=1 only for explicit experiments." >&2
+    exit 1
+  fi
+
   local notary_args=()
   if [[ -n "$APPLE_NOTARY_KEYCHAIN_PROFILE" ]]; then
     notary_args=(--keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE")

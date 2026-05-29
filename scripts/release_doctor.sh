@@ -217,6 +217,9 @@ if [[ "${SIGNING_IDENTITY:--}" == "-" ]]; then
   [[ "$STRICT_DISTRIBUTION" == "1" ]] && fail "Distribution release requires Developer ID or App Store signing identity"
 else
   ok "SIGNING_IDENTITY is set: ${SIGNING_IDENTITY}"
+  if [[ "${NOTARIZE_DMG:-0}" == "1" && "$SIGNING_IDENTITY" != Developer\ ID\ Application:* && "${ALLOW_NON_DEVELOPER_ID_NOTARIZATION:-0}" != "1" ]]; then
+    fail "Notarized direct-download DMGs require a Developer ID Application signing identity"
+  fi
 fi
 
 echo ""

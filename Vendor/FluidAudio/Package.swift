@@ -25,10 +25,7 @@ let package = Package(
                 "FastClusterWrapper",
                 "MachTaskSelfWrapper",
             ],
-            path: "Sources/FluidAudio",
-            exclude: [
-                "Frameworks"
-            ]
+            path: "Sources/FluidAudio"
         ),
         .target(
             name: "FastClusterWrapper",

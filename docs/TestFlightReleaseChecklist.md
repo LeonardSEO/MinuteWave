@@ -58,17 +58,27 @@ Expected distribution result:
 spctl -a -vv -t open --context context:primary-signature dist/MinuteWave-macOS.dmg
 ```
 
+For GitHub-hosted releases, configure the secrets in
+`docs/GitHubActionsReleaseSecrets.md`. Tag pushes matching `v*.*.*` now require
+Developer ID signing and notarization instead of falling back to ad-hoc signing.
+
 ## TestFlight readiness
 
 The local Swift Package Manager bundle is useful for TCC and DMG validation, but TestFlight still requires an Apple archive/export path. Before marking TestFlight work complete:
 
-- Create or open the native macOS app target/archive flow in Xcode.
+- Create or open the native macOS app target/archive flow in Xcode, or run the
+  `TestFlight Package` GitHub Actions workflow.
 - Use bundle identifier `com.vepando.minutewave`.
 - Use the same entitlements from `config/MinuteWave.entitlements`.
 - Include `Sources/AINoteTakerApp/Resources/PrivacyInfo.xcprivacy`.
 - Archive with an Apple Distribution/App Store signing identity.
 - Validate the archive in Xcode Organizer or App Store Connect.
 - Run an internal TestFlight install on a clean macOS user account.
+
+The repository includes `scripts/build_testflight_pkg.sh` for the workflow. It
+requires Apple Distribution, 3rd Party Mac Developer Installer, and App Store
+Connect credentials. A local `Apple Development` certificate is not enough for
+TestFlight upload.
 
 ## TCC smoke test
 
