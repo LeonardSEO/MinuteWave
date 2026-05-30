@@ -27,6 +27,22 @@ require_value() {
   fi
 }
 
+run_altool() {
+  local output
+  local status
+  set +e
+  output="$(xcrun altool "$@" 2>&1)"
+  status=$?
+  set -e
+  printf '%s\n' "$output"
+  if [[ $status -ne 0 ]]; then
+    return "$status"
+  fi
+  if grep -Eq '(^|[[:space:]])ERROR:|AuthenticationFailure|Unable to authenticate|received status code 401|NOT_AUTHORIZED' <<< "$output"; then
+    return 1
+  fi
+}
+
 require_value "$SIGNING_IDENTITY" "APPLE_DISTRIBUTION_SIGNING_IDENTITY or SIGNING_IDENTITY"
 require_value "$INSTALLER_SIGNING_IDENTITY" "APPLE_INSTALLER_SIGNING_IDENTITY"
 
@@ -94,12 +110,12 @@ fi
 
 if [[ "$VALIDATE_TESTFLIGHT" == "1" ]]; then
   echo "Validating package with App Store Connect..."
-  xcrun altool --validate-app "$PKG_PATH" "${altool_auth_args[@]}" --output-format json
+  run_altool --validate-app "$PKG_PATH" "${altool_auth_args[@]}" --output-format json
 fi
 
 if [[ "$UPLOAD_TESTFLIGHT" == "1" ]]; then
   echo "Uploading package to App Store Connect/TestFlight..."
-  xcrun altool --upload-package "$PKG_PATH" "${altool_auth_args[@]}" --output-format json
+  run_altool --upload-package "$PKG_PATH" "${altool_auth_args[@]}" --output-format json
 else
   echo "UPLOAD_TESTFLIGHT is not 1; package was built but not uploaded."
 fi
