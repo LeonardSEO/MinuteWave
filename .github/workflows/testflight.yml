@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      validate:
+        description: "Validate with App Store Connect. Requires App Store Connect credentials."
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -94,7 +99,7 @@ jobs:
       - name: Apply app version
         run: ./scripts/set_app_version.sh "${{ inputs.version }}" "${{ inputs.build_number || github.run_number }}"
 
-      - name: Build and validate TestFlight package
+      - name: Build TestFlight package
         env:
           APPLE_DISTRIBUTION_SIGNING_IDENTITY: ${{ secrets.MAC_APPLE_DISTRIBUTION_SIGNING_IDENTITY }}
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.MAC_INSTALLER_SIGNING_IDENTITY }}
@@ -103,7 +108,7 @@ jobs:
           ASC_USERNAME: ${{ secrets.ASC_USERNAME }}
           ASC_PASSWORD: ${{ secrets.ASC_PASSWORD }}
           ASC_PROVIDER_PUBLIC_ID: ${{ secrets.ASC_PROVIDER_PUBLIC_ID }}
-          VALIDATE_TESTFLIGHT: "1"
+          VALIDATE_TESTFLIGHT: ${{ (inputs.validate || inputs.upload) && '1' || '0' }}
           UPLOAD_TESTFLIGHT: ${{ inputs.upload && '1' || '0' }}
         run: ./scripts/build_testflight_pkg.sh
 

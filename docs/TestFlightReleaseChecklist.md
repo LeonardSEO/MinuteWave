@@ -75,10 +75,11 @@ The local Swift Package Manager bundle is useful for TCC and DMG validation, but
 - Validate the archive in Xcode Organizer or App Store Connect.
 - Run an internal TestFlight install on a clean macOS user account.
 
-The repository includes `scripts/build_testflight_pkg.sh` for the workflow. It
-requires Apple Distribution, 3rd Party Mac Developer Installer, and App Store
-Connect credentials. A local `Apple Development` certificate is not enough for
-TestFlight upload.
+The repository includes `scripts/build_testflight_pkg.sh` for the workflow. A
+package-only workflow run requires Apple Distribution and 3rd Party Mac Developer
+Installer credentials. App Store Connect credentials are required when
+`validate` or `upload` is enabled. A local `Apple Development` certificate is not
+enough for TestFlight upload.
 
 ## TCC smoke test
 

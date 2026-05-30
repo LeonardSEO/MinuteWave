@@ -36,8 +36,9 @@ Application identity.
 
 ## TestFlight package
 
-The `TestFlight Package` workflow builds a signed macOS package and validates it
-with App Store Connect. It uploads only when the manual `upload` input is true.
+The `TestFlight Package` workflow builds a signed macOS package. It validates
+with App Store Connect only when the manual `validate` input is true, and it
+uploads only when `upload` is true.
 
 Required signing secrets:
 
