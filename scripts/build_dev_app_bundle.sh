@@ -101,6 +101,58 @@ copy_info_plist_localizations
 copy_privacy_manifest
 copy_resource_bundle
 
+prepare_resource_bundles() {
+  local app_bundle_id
+  local app_version
+  local app_build
+
+  app_bundle_id="$(
+    /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
+  )"
+  app_version="$(
+    /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
+  )"
+  app_build="$(
+    /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
+  )"
+
+  if [[ -z "$app_bundle_id" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' resource_bundle; do
+    local bundle_name
+    local plist_path
+    local resource_bundle_id
+
+    bundle_name="$(basename "$resource_bundle" .bundle)"
+    plist_path="$resource_bundle/Info.plist"
+    resource_bundle_id="$app_bundle_id.$bundle_name"
+
+    if [[ ! -f "$plist_path" ]]; then
+      /usr/bin/plutil -create xml1 "$plist_path"
+    fi
+
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $resource_bundle_id" "$plist_path" 2>/dev/null ||
+      /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $resource_bundle_id" "$plist_path"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleName $bundle_name" "$plist_path" 2>/dev/null ||
+      /usr/libexec/PlistBuddy -c "Add :CFBundleName string $bundle_name" "$plist_path"
+    /usr/libexec/PlistBuddy -c "Set :CFBundlePackageType BNDL" "$plist_path" 2>/dev/null ||
+      /usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string BNDL" "$plist_path"
+
+    if [[ -n "$app_version" ]]; then
+      /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $app_version" "$plist_path" 2>/dev/null ||
+        /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $app_version" "$plist_path"
+    fi
+    if [[ -n "$app_build" ]]; then
+      /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $app_build" "$plist_path" 2>/dev/null ||
+        /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $app_build" "$plist_path"
+    fi
+  done < <(find "$APP_BUNDLE_PATH/Contents/Resources" -maxdepth 1 -type d -name "*.bundle" -print0 | sort -z)
+}
+
+prepare_resource_bundles
+
 embed_sqlcipher_runtime() {
   local linked_sqlcipher
   linked_sqlcipher="$(otool -L "$EXECUTABLE_PATH" | awk '/libsqlcipher\.dylib/{print $1; exit}')"
@@ -237,6 +289,10 @@ sign_embedded_code() {
   while IFS= read -r -d '' dylib_path; do
     codesign --force --sign "$SIGNING_IDENTITY" "$dylib_path"
   done < <(find "$FRAMEWORKS_DIR" -type f -name "*.dylib" -print0 | sort -z)
+
+  while IFS= read -r -d '' bundle_path; do
+    codesign --force --sign "$SIGNING_IDENTITY" "$bundle_path"
+  done < <(find "$APP_BUNDLE_PATH/Contents/Resources" -maxdepth 1 -type d -name "*.bundle" -print0 | sort -z)
 }
 
 if [[ -f "$ICON_SOURCE_PATH" ]]; then
