@@ -127,7 +127,11 @@ prepare_resource_bundles() {
 
     bundle_name="$(basename "$resource_bundle" .bundle)"
     plist_path="$resource_bundle/Info.plist"
-    resource_bundle_id="$app_bundle_id.$bundle_name"
+    resource_bundle_id="$app_bundle_id.$(
+      printf '%s' "$bundle_name" |
+        tr '[:upper:]_' '[:lower:]-' |
+        sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//'
+    )"
 
     if [[ ! -f "$plist_path" ]]; then
       /usr/bin/plutil -create xml1 "$plist_path"
