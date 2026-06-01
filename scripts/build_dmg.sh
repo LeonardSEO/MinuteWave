@@ -84,6 +84,15 @@ else
   echo "Styled DMG generated."
 fi
 
+sign_dmg() {
+  if [[ "${SIGNING_IDENTITY:--}" == "-" ]]; then
+    return 0
+  fi
+
+  echo "Signing DMG..."
+  codesign --force --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+}
+
 notarize_and_staple_dmg() {
   if [[ "$NOTARIZE_DMG" != "1" ]]; then
     return 0
@@ -130,6 +139,7 @@ notarize_and_staple_dmg() {
   xcrun stapler validate "$DMG_PATH"
 }
 
+sign_dmg
 notarize_and_staple_dmg
 
 echo ""
