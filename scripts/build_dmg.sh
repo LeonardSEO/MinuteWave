@@ -19,6 +19,7 @@ APPLE_NOTARY_PASSWORD="${APPLE_NOTARY_PASSWORD:-}"
 APPLE_NOTARY_KEY_ID="${APPLE_NOTARY_KEY_ID:-}"
 APPLE_NOTARY_ISSUER_ID="${APPLE_NOTARY_ISSUER_ID:-}"
 APPLE_NOTARY_KEY_PATH="${APPLE_NOTARY_KEY_PATH:-}"
+APPLE_NOTARY_KEY_SUBJECT="${APPLE_NOTARY_KEY_SUBJECT:-}"
 
 mkdir -p "$DIST_DIR"
 
@@ -110,8 +111,11 @@ notarize_and_staple_dmg() {
     notary_args=(--keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE")
   elif [[ -n "$APPLE_NOTARY_APPLE_ID" && -n "$APPLE_NOTARY_TEAM_ID" && -n "$APPLE_NOTARY_PASSWORD" ]]; then
     notary_args=(--apple-id "$APPLE_NOTARY_APPLE_ID" --team-id "$APPLE_NOTARY_TEAM_ID" --password "$APPLE_NOTARY_PASSWORD")
-  elif [[ -n "$APPLE_NOTARY_KEY_ID" && -n "$APPLE_NOTARY_ISSUER_ID" && -n "$APPLE_NOTARY_KEY_PATH" ]]; then
-    notary_args=(--key "$APPLE_NOTARY_KEY_PATH" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID")
+  elif [[ -n "$APPLE_NOTARY_KEY_ID" && -n "$APPLE_NOTARY_KEY_PATH" ]]; then
+    notary_args=(--key "$APPLE_NOTARY_KEY_PATH" --key-id "$APPLE_NOTARY_KEY_ID")
+    if [[ -n "$APPLE_NOTARY_ISSUER_ID" && "$APPLE_NOTARY_KEY_SUBJECT" != "user" ]]; then
+      notary_args+=(--issuer "$APPLE_NOTARY_ISSUER_ID")
+    fi
   else
     echo "Error: NOTARIZE_DMG=1 requires notary credentials." >&2
     echo "Provide APPLE_NOTARY_KEYCHAIN_PROFILE, Apple ID credentials, or App Store Connect API key credentials." >&2

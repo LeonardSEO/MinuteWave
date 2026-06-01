@@ -73,4 +73,4 @@ Opmerking signing:
 
 - `scripts/build_dev_app_bundle.sh` gebruikt voor ad-hoc builds een stabiele designated requirement op basis van `CFBundleIdentifier`, zodat permissies beter mee kunnen gaan tussen lokale updates.
 - Voor distributie/release blijft een echte signing identity (Apple Development / Developer ID) aanbevolen.
-- De release-workflow gebruikt Apple Development-signing als secrets aanwezig zijn, en valt anders automatisch terug naar ad-hoc signing.
+- De DMG release-workflow vereist Developer ID-signing en notarization; hij publiceert geen ad-hoc of niet-genotariseerde DMGs.

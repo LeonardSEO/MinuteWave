@@ -30,6 +30,15 @@ Required secrets:
 | `APPLE_NOTARY_PASSWORD` | App-specific password or keychain password reference |
 | `APPLE_NOTARY_TEAM_ID` | Apple Team ID |
 
+Alternatively, notarization may use an App Store Connect API key:
+
+| Secret | Purpose |
+| --- | --- |
+| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID, or reuse `ASC_API_KEY_ID` |
+| `APPLE_NOTARY_ISSUER_ID` | Issuer ID for team keys; omit/ignore for individual keys |
+| `APPLE_NOTARY_KEY_P8_BASE64` | Base64-encoded private `.p8` key, or reuse `ASC_API_KEY_P8_BASE64` |
+| `APPLE_NOTARY_KEY_SUBJECT` | Set to `user` for individual API keys |
+
 Legacy `APPLE_DEV_*` signing secrets are still read for compatibility, but real
 distribution DMGs require `MACOS_SIGNING_IDENTITY` to be a Developer ID
 Application identity.

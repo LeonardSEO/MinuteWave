@@ -71,6 +71,7 @@ is_notary_configured() {
   [[ -n "${APPLE_NOTARY_KEYCHAIN_PROFILE:-}" ]] && return 0
   [[ -n "${APPLE_NOTARY_APPLE_ID:-}" && -n "${APPLE_NOTARY_TEAM_ID:-}" && -n "${APPLE_NOTARY_PASSWORD:-}" ]] && return 0
   [[ -n "${APPLE_NOTARY_KEY_ID:-}" && -n "${APPLE_NOTARY_ISSUER_ID:-}" && -n "${APPLE_NOTARY_KEY_PATH:-}" ]] && return 0
+  [[ -n "${APPLE_NOTARY_KEY_ID:-}" && -n "${APPLE_NOTARY_KEY_PATH:-}" && "${APPLE_NOTARY_KEY_SUBJECT:-}" == "user" ]] && return 0
   return 1
 }
 

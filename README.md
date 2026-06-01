@@ -208,9 +208,8 @@ APPLE_NOTARY_PASSWORD="@keychain:AC_PASSWORD" \
 - Release checklist: [`docs/TestFlightReleaseChecklist.md`](docs/TestFlightReleaseChecklist.md)
 - Release secret setup: [`docs/GitHubActionsReleaseSecrets.md`](docs/GitHubActionsReleaseSecrets.md)
 
-Tagged distribution releases require Developer ID signing and notarization
-secrets. Manual smoke builds can still be run without distribution secrets, but
-they are not published as user releases.
+DMG releases require Developer ID signing and notarization secrets. The GitHub
+release workflow does not publish ad-hoc or non-notarized DMGs.
 
 ## Troubleshooting
 

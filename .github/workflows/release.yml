@@ -14,14 +14,6 @@ on:
         description: "Build number. Leave empty to use the GitHub run number."
         required: false
         type: string
-      release_mode:
-        description: "distribution requires Developer ID signing and notarization; smoke allows an unsigned local-check DMG."
-        required: true
-        default: "distribution"
-        type: choice
-        options:
-          - distribution
-          - smoke
       publish_release:
         description: "Publish a GitHub Release for manual runs."
         required: true
@@ -58,18 +50,16 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version || '' }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number || '' }}
-          INPUT_RELEASE_MODE: ${{ inputs.release_mode || '' }}
           INPUT_PUBLISH_RELEASE: ${{ inputs.publish_release || false }}
         run: |
           if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
             RELEASE_VERSION="${GITHUB_REF_NAME#v}"
-            RELEASE_MODE="distribution"
             PUBLISH_GITHUB_RELEASE="true"
           else
             RELEASE_VERSION="$INPUT_VERSION"
-            RELEASE_MODE="${INPUT_RELEASE_MODE:-distribution}"
             PUBLISH_GITHUB_RELEASE="$INPUT_PUBLISH_RELEASE"
           fi
+          RELEASE_MODE="distribution"
 
           RELEASE_BUILD_NUMBER="${INPUT_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
 
@@ -102,6 +92,10 @@ jobs:
           APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
           APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
           APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID || secrets.ASC_API_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 || secrets.ASC_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_SUBJECT: ${{ secrets.APPLE_NOTARY_KEY_SUBJECT || secrets.ASC_API_KEY_SUBJECT }}
         run: |
           CERT_P12_BASE64="${MACOS_CERT_P12_BASE64:-${LEGACY_APPLE_DEV_CERT_P12_BASE64:-}}"
           CERT_PASSWORD="${MACOS_CERT_PASSWORD:-${LEGACY_APPLE_DEV_CERT_PASSWORD:-}}"
@@ -113,33 +107,42 @@ jobs:
             echo "ENABLE_HARDENED_RUNTIME=1" >> "$GITHUB_ENV"
             echo "Signing with configured macOS identity from secrets."
           else
-            if [[ "$RELEASE_MODE" == "distribution" ]]; then
-              echo "Distribution releases require MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, and MACOS_SIGNING_IDENTITY." >&2
-              exit 1
-            fi
-            echo "HAS_SIGNING_SECRETS=false" >> "$GITHUB_ENV"
-            echo "SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
-            echo "ENABLE_HARDENED_RUNTIME=0" >> "$GITHUB_ENV"
-            echo "Smoke build only: signing secrets not configured; falling back to ad-hoc signing."
+            echo "Distribution DMG releases require MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, and MACOS_SIGNING_IDENTITY." >&2
+            exit 1
           fi
 
-          if [[ "$RELEASE_MODE" == "distribution" && "$SIGNING_NAME" != Developer\ ID\ Application:* ]]; then
+          if [[ "$SIGNING_NAME" != Developer\ ID\ Application:* ]]; then
             echo "Distribution DMG releases require MACOS_SIGNING_IDENTITY to be a Developer ID Application identity." >&2
             echo "Current identity: ${SIGNING_NAME:-unset}" >&2
             exit 1
           fi
 
-          if [[ -n "${CERT_P12_BASE64:-}" && -n "${CERT_PASSWORD:-}" && -n "${SIGNING_NAME:-}" && -n "${APPLE_NOTARY_APPLE_ID:-}" && -n "${APPLE_NOTARY_PASSWORD:-}" && -n "${APPLE_NOTARY_TEAM_ID:-}" ]]; then
+          if [[ -n "${APPLE_NOTARY_APPLE_ID:-}" && -n "${APPLE_NOTARY_PASSWORD:-}" && -n "${APPLE_NOTARY_TEAM_ID:-}" ]]; then
             echo "NOTARIZE_DMG=1" >> "$GITHUB_ENV"
-            echo "Notarization credentials detected; DMG will be submitted to Apple."
+            echo "Notarization Apple ID credentials detected; DMG will be submitted to Apple."
+          elif [[ -n "${APPLE_NOTARY_KEY_ID:-}" && -n "${APPLE_NOTARY_KEY_P8_BASE64:-}" ]]; then
+            echo "NOTARIZE_DMG=1" >> "$GITHUB_ENV"
+            echo "APPLE_NOTARY_KEY_ID=${APPLE_NOTARY_KEY_ID}" >> "$GITHUB_ENV"
+            echo "APPLE_NOTARY_ISSUER_ID=${APPLE_NOTARY_ISSUER_ID}" >> "$GITHUB_ENV"
+            echo "APPLE_NOTARY_KEY_SUBJECT=${APPLE_NOTARY_KEY_SUBJECT}" >> "$GITHUB_ENV"
+            echo "Notarization API key credentials detected; DMG will be submitted to Apple."
           else
-            if [[ "$RELEASE_MODE" == "distribution" ]]; then
-              echo "Distribution releases require APPLE_NOTARY_APPLE_ID, APPLE_NOTARY_PASSWORD, and APPLE_NOTARY_TEAM_ID." >&2
-              exit 1
-            fi
-            echo "NOTARIZE_DMG=0" >> "$GITHUB_ENV"
-            echo "Smoke build only: signing/notarization credentials not fully configured; DMG will not be notarized."
+            echo "Distribution DMG releases require notarization credentials." >&2
+            echo "Set APPLE_NOTARY_APPLE_ID + APPLE_NOTARY_PASSWORD + APPLE_NOTARY_TEAM_ID, or APPLE_NOTARY_KEY_ID + APPLE_NOTARY_KEY_P8_BASE64." >&2
+            exit 1
           fi
+
+      - name: Prepare notary API key
+        if: env.NOTARIZE_DMG == '1' && env.APPLE_NOTARY_KEY_ID != ''
+        env:
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 || secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          KEY_DIR="$RUNNER_TEMP/notary-private-keys"
+          KEY_PATH="$KEY_DIR/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          mkdir -p "$KEY_DIR"
+          echo "$APPLE_NOTARY_KEY_P8_BASE64" | base64 -D > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_NOTARY_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Import macOS signing certificate
         if: env.HAS_SIGNING_SECRETS == 'true'
@@ -179,6 +182,10 @@ jobs:
             APPLE_NOTARY_APPLE_ID="$APPLE_NOTARY_APPLE_ID" \
             APPLE_NOTARY_PASSWORD="$APPLE_NOTARY_PASSWORD" \
             APPLE_NOTARY_TEAM_ID="$APPLE_NOTARY_TEAM_ID" \
+            APPLE_NOTARY_KEY_ID="$APPLE_NOTARY_KEY_ID" \
+            APPLE_NOTARY_ISSUER_ID="$APPLE_NOTARY_ISSUER_ID" \
+            APPLE_NOTARY_KEY_PATH="$APPLE_NOTARY_KEY_PATH" \
+            APPLE_NOTARY_KEY_SUBJECT="$APPLE_NOTARY_KEY_SUBJECT" \
             ./scripts/build_dmg.sh release
 
       - name: Verify app signature
@@ -207,6 +214,10 @@ jobs:
             APPLE_NOTARY_APPLE_ID="${{ secrets.APPLE_NOTARY_APPLE_ID }}" \
             APPLE_NOTARY_PASSWORD="${{ secrets.APPLE_NOTARY_PASSWORD }}" \
             APPLE_NOTARY_TEAM_ID="${{ secrets.APPLE_NOTARY_TEAM_ID }}" \
+            APPLE_NOTARY_KEY_ID="$APPLE_NOTARY_KEY_ID" \
+            APPLE_NOTARY_ISSUER_ID="$APPLE_NOTARY_ISSUER_ID" \
+            APPLE_NOTARY_KEY_PATH="$APPLE_NOTARY_KEY_PATH" \
+            APPLE_NOTARY_KEY_SUBJECT="$APPLE_NOTARY_KEY_SUBJECT" \
             ./scripts/release_doctor.sh
 
       - name: Generate SHA256
