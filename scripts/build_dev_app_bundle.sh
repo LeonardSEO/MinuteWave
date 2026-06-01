@@ -132,17 +132,84 @@ embed_sqlcipher_runtime() {
   local embedded_sqlcipher="$FRAMEWORKS_DIR/libsqlcipher.dylib"
   cp "$linked_sqlcipher" "$embedded_sqlcipher"
 
-  local linked_libcrypto
-  linked_libcrypto="$(otool -L "$linked_sqlcipher" | awk '/libcrypto\.3\.dylib/{print $1; exit}')"
-  if [[ -n "$linked_libcrypto" && -f "$linked_libcrypto" ]]; then
-    local embedded_libcrypto="$FRAMEWORKS_DIR/libcrypto.3.dylib"
-    cp "$linked_libcrypto" "$embedded_libcrypto"
-    install_name_tool -id "@rpath/libcrypto.3.dylib" "$embedded_libcrypto"
-    install_name_tool -change "$linked_libcrypto" "@rpath/libcrypto.3.dylib" "$embedded_sqlcipher"
-  fi
-
   install_name_tool -id "@rpath/libsqlcipher.dylib" "$embedded_sqlcipher"
   install_name_tool -change "$linked_sqlcipher" "@rpath/libsqlcipher.dylib" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
+
+  is_embeddable_dylib() {
+    local dylib_path="$1"
+    case "$dylib_path" in
+      @rpath/*|@loader_path/*|@executable_path/*|/usr/lib/*|/System/Library/*)
+        return 1
+        ;;
+      *.dylib)
+        return 0
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+
+  resolve_dylib_path() {
+    local dylib_path="$1"
+    local dylib_name
+    dylib_name="$(basename "$dylib_path")"
+
+    if [[ -f "$dylib_path" ]]; then
+      printf '%s\n' "$dylib_path"
+      return 0
+    fi
+
+    local search_root
+    for search_root in /opt/homebrew /usr/local; do
+      if [[ -d "$search_root" ]]; then
+        find "$search_root" -type f -name "$dylib_name" -print -quit 2>/dev/null
+      fi
+    done | head -n 1
+  }
+
+  embed_dylib_dependency() {
+    local referenced_path="$1"
+    local parent_binary="$2"
+    local source_path
+    local dylib_name
+    local embedded_path
+
+    dylib_name="$(basename "$referenced_path")"
+    embedded_path="$FRAMEWORKS_DIR/$dylib_name"
+    source_path="$(resolve_dylib_path "$referenced_path")"
+
+    if [[ -z "$source_path" || ! -f "$source_path" ]]; then
+      local message="runtime dependency not found: $referenced_path"
+      if is_release_build; then
+        echo "Error: $message" >&2
+        exit 1
+      fi
+      echo "Warning: $message"
+      return 0
+    fi
+
+    if [[ ! -f "$embedded_path" ]]; then
+      cp "$source_path" "$embedded_path"
+      install_name_tool -id "@rpath/$dylib_name" "$embedded_path"
+    fi
+
+    install_name_tool -change "$referenced_path" "@loader_path/$dylib_name" "$parent_binary"
+  }
+
+  while IFS= read -r dependency_path; do
+    if is_embeddable_dylib "$dependency_path"; then
+      embed_dylib_dependency "$dependency_path" "$embedded_sqlcipher"
+    fi
+  done < <(otool -L "$embedded_sqlcipher" | awk 'NR > 1 {print $1}')
+
+  while IFS= read -r -d '' embedded_dependency; do
+    while IFS= read -r nested_dependency_path; do
+      if is_embeddable_dylib "$nested_dependency_path"; then
+        embed_dylib_dependency "$nested_dependency_path" "$embedded_dependency"
+      fi
+    done < <(otool -L "$embedded_dependency" | awk 'NR > 1 {print $1}')
+  done < <(find "$FRAMEWORKS_DIR" -type f -name "*.dylib" ! -name "libsqlcipher.dylib" -print0 | sort -z)
 
   if ! otool -l "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | grep -q "@executable_path/../Frameworks"; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
@@ -150,6 +217,12 @@ embed_sqlcipher_runtime() {
 
   if is_release_build && ! otool -L "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME" | grep -q "@rpath/libsqlcipher.dylib"; then
     echo "Error: release app binary does not reference embedded @rpath/libsqlcipher.dylib" >&2
+    exit 1
+  fi
+
+  if is_release_build && find "$FRAMEWORKS_DIR" -type f -name "*.dylib" -print0 | xargs -0 otool -L | grep -Eq '^[[:space:]]+(/opt/homebrew|/usr/local/(Cellar|opt)|/Users/)'; then
+    echo "Error: release app bundle contains non-portable dylib references:" >&2
+    find "$FRAMEWORKS_DIR" -type f -name "*.dylib" -print0 | xargs -0 otool -L | grep -E '^[[:space:]]+(/opt/homebrew|/usr/local/(Cellar|opt)|/Users/)' >&2
     exit 1
   fi
 }

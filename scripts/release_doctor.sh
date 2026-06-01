@@ -110,6 +110,19 @@ if [[ -d "$APP_BUNDLE_PATH" ]]; then
     fi
   fi
 
+  if [[ -d "$APP_BUNDLE_PATH/Contents/Frameworks" ]]; then
+    non_portable_dylibs="$(
+      find "$APP_BUNDLE_PATH/Contents/Frameworks" -type f -name "*.dylib" -print0 |
+        xargs -0 otool -L 2>/dev/null |
+        grep -E '^[[:space:]]+(/opt/homebrew|/usr/local/(Cellar|opt)|/Users/)' || true
+    )"
+    if [[ -z "$non_portable_dylibs" ]]; then
+      ok "Embedded dylibs have no Homebrew/user-path load commands"
+    else
+      fail "Embedded dylibs contain non-portable load commands: $non_portable_dylibs"
+    fi
+  fi
+
   if codesign --verify --deep --strict "$APP_BUNDLE_PATH" >/dev/null 2>&1; then
     ok "App signature verifies"
   else
