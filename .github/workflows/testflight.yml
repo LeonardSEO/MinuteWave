@@ -103,14 +103,20 @@ jobs:
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_SUBJECT: ${{ secrets.ASC_API_KEY_SUBJECT }}
         run: |
           if [[ -z "${ASC_API_KEY_ID:-}" || -z "${ASC_API_KEY_P8_BASE64:-}" ]]; then
             echo "No ASC API key file secret configured; falling back to username/password auth if present."
             exit 0
           fi
           mkdir -p "$RUNNER_TEMP/private_keys"
-          echo "$ASC_API_KEY_P8_BASE64" | base64 -D > "$RUNNER_TEMP/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
-          echo "ASC_API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey_${ASC_API_KEY_ID}.p8" >> "$GITHUB_ENV"
+          if [[ "${ASC_API_KEY_SUBJECT:-}" == "user" ]]; then
+            key_path="$RUNNER_TEMP/private_keys/ApiKey_${ASC_API_KEY_ID}.p8"
+          else
+            key_path="$RUNNER_TEMP/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          fi
+          echo "$ASC_API_KEY_P8_BASE64" | base64 -D > "$key_path"
+          echo "ASC_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
       - name: Apply app version
         run: ./scripts/set_app_version.sh "${{ inputs.version }}" "${{ inputs.build_number || github.run_number }}"
@@ -121,6 +127,7 @@ jobs:
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.MAC_INSTALLER_SIGNING_IDENTITY }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_SUBJECT: ${{ secrets.ASC_API_KEY_SUBJECT }}
           ASC_USERNAME: ${{ secrets.ASC_USERNAME }}
           ASC_PASSWORD: ${{ secrets.ASC_PASSWORD }}
           ASC_PROVIDER_PUBLIC_ID: ${{ secrets.ASC_PROVIDER_PUBLIC_ID }}

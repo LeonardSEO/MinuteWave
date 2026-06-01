@@ -14,6 +14,7 @@ UPLOAD_TESTFLIGHT="${UPLOAD_TESTFLIGHT:-0}"
 ASC_API_KEY_ID="${ASC_API_KEY_ID:-${APPLE_ASC_KEY_ID:-}}"
 ASC_API_ISSUER_ID="${ASC_API_ISSUER_ID:-${APPLE_ASC_ISSUER_ID:-}}"
 ASC_API_KEY_PATH="${ASC_API_KEY_PATH:-${APPLE_ASC_KEY_PATH:-}}"
+ASC_API_KEY_SUBJECT="${ASC_API_KEY_SUBJECT:-${APPLE_ASC_KEY_SUBJECT:-}}"
 ASC_USERNAME="${ASC_USERNAME:-${APPLE_ID_USERNAME:-}}"
 ASC_PASSWORD="${ASC_PASSWORD:-${APPLE_ID_PASSWORD:-}}"
 ASC_PROVIDER_PUBLIC_ID="${ASC_PROVIDER_PUBLIC_ID:-}"
@@ -89,6 +90,9 @@ if [[ -n "$ASC_API_KEY_ID" && -n "$ASC_API_ISSUER_ID" ]]; then
   altool_auth_args=(--api-key "$ASC_API_KEY_ID" --api-issuer "$ASC_API_ISSUER_ID")
   if [[ -n "$ASC_API_KEY_PATH" ]]; then
     altool_auth_args+=(--p8-file-path "$ASC_API_KEY_PATH")
+  fi
+  if [[ -n "$ASC_API_KEY_SUBJECT" ]]; then
+    altool_auth_args+=(--api-key-subject "$ASC_API_KEY_SUBJECT")
   fi
 elif [[ -n "$ASC_USERNAME" && -n "$ASC_PASSWORD" ]]; then
   altool_auth_args=(-u "$ASC_USERNAME" -p "$ASC_PASSWORD")
