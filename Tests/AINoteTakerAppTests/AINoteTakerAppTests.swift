@@ -1024,10 +1024,10 @@ func screenCaptureQuickState() {
     #expect(Permissions.quickScreenCaptureState(preflightGranted: false) == .notDetermined)
 }
 
-@Test("Screen capture quick state does not reuse stale granted state")
-func screenCaptureQuickStateDoesNotReuseStaleGrant() {
+@Test("Screen capture quick state does not reuse stale cached state")
+func screenCaptureQuickStateDoesNotReuseStaleCachedState() {
     #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .granted) == .notDetermined)
-    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .denied) == .denied)
+    #expect(Permissions.quickScreenCaptureState(preflightGranted: false, lastKnownState: .denied) == .notDetermined)
 }
 
 @Test("Screen capture probe failure classification detects denied vs unknown")
