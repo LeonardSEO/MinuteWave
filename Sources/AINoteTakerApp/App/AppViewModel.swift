@@ -865,6 +865,10 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func refreshSystemPermissionStatus() async {
+        await refreshCaptureStatus()
+    }
+
     private func applyCaptureStatus(_ status: (mode: LocalAudioCaptureMode, warning: String?)) {
         localCaptureStatusText = L10n.tr("ui.status.audio.mode", status.mode.localizedLabel)
         localCaptureWarningText = status.warning
