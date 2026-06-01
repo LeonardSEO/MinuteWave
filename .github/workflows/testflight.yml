@@ -118,6 +118,21 @@ jobs:
           echo "$ASC_API_KEY_P8_BASE64" | base64 -D > "$key_path"
           echo "ASC_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
+      - name: Prepare Mac App Store provisioning profile
+        env:
+          MAC_APP_STORE_PROVISIONING_PROFILE_BASE64: ${{ secrets.MAC_APP_STORE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [[ -z "${MAC_APP_STORE_PROVISIONING_PROFILE_BASE64:-}" ]]; then
+            echo "Missing MAC_APP_STORE_PROVISIONING_PROFILE_BASE64." >&2
+            echo "Create a Mac App Store provisioning profile for com.vepando.minutewave and store it as this base64 secret." >&2
+            exit 1
+          fi
+
+          profile_path="$RUNNER_TEMP/MinuteWave_Mac_App_Store.provisionprofile"
+          echo "$MAC_APP_STORE_PROVISIONING_PROFILE_BASE64" | base64 -D > "$profile_path"
+          security cms -D -i "$profile_path" >/dev/null
+          echo "MAC_APP_STORE_PROVISIONING_PROFILE_PATH=$profile_path" >> "$GITHUB_ENV"
+
       - name: Apply app version
         run: ./scripts/set_app_version.sh "${{ inputs.version }}" "${{ inputs.build_number || github.run_number }}"
 

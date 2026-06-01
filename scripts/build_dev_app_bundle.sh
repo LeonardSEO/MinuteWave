@@ -27,6 +27,7 @@ ICON_ICNS_PATH="$ROOT_DIR/.build/MinuteWave.icns"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
 ENTITLEMENTS_PATH="${ENTITLEMENTS_PATH:-}"
+PROVISIONING_PROFILE_PATH="${PROVISIONING_PROFILE_PATH:-}"
 
 if [[ ! -f "$PLIST_TEMPLATE_PATH" ]]; then
   echo "Info.plist template not found: $PLIST_TEMPLATE_PATH" >&2
@@ -318,6 +319,20 @@ fi
 
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 
+embed_provisioning_profile() {
+  if [[ -z "$PROVISIONING_PROFILE_PATH" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$PROVISIONING_PROFILE_PATH" ]]; then
+    echo "Provisioning profile not found: $PROVISIONING_PROFILE_PATH" >&2
+    exit 1
+  fi
+
+  cp "$PROVISIONING_PROFILE_PATH" "$APP_BUNDLE_PATH/Contents/embedded.provisionprofile"
+  echo "Embedded provisioning profile: $APP_BUNDLE_PATH/Contents/embedded.provisionprofile"
+}
+
 BUNDLE_ID="$(
   /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE_PATH/Contents/Info.plist" 2>/dev/null || true
 )"
@@ -338,6 +353,7 @@ if [[ "$SIGNING_IDENTITY" == "-" && -n "$BUNDLE_ID" ]]; then
   CODESIGN_ARGS+=(--requirements "$ADHOC_REQUIREMENT")
 fi
 
+embed_provisioning_profile
 sign_embedded_code
 codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE_PATH"
 

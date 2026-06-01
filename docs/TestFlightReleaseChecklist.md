@@ -72,14 +72,16 @@ The local Swift Package Manager bundle is useful for TCC and DMG validation, but
 - Use the same entitlements from `config/MinuteWave.entitlements`.
 - Include `Sources/AINoteTakerApp/Resources/PrivacyInfo.xcprivacy`.
 - Archive with an Apple Distribution/App Store signing identity.
+- Embed the Mac App Store provisioning profile for `com.vepando.minutewave` at
+  `MinuteWave.app/Contents/embedded.provisionprofile` before final app signing.
 - Validate the archive in Xcode Organizer or App Store Connect.
 - Run an internal TestFlight install on a clean macOS user account.
 
 The repository includes `scripts/build_testflight_pkg.sh` for the workflow. A
 package-only workflow run requires Apple Distribution and 3rd Party Mac Developer
-Installer credentials. App Store Connect credentials are required when
-`validate` or `upload` is enabled. A local `Apple Development` certificate is not
-enough for TestFlight upload.
+Installer credentials plus `MAC_APP_STORE_PROVISIONING_PROFILE_BASE64`. App Store
+Connect credentials are required when `validate` or `upload` is enabled. A local
+`Apple Development` certificate is not enough for TestFlight upload.
 
 ## TCC smoke test
 

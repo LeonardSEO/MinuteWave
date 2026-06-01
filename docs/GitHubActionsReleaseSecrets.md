@@ -56,9 +56,18 @@ Required signing secrets:
 | `MAC_APPLE_DISTRIBUTION_CERT_P12_BASE64` | Base64-encoded `.p12` for `Apple Distribution: ...` |
 | `MAC_APPLE_DISTRIBUTION_CERT_PASSWORD` | Password for the app distribution `.p12` |
 | `MAC_APPLE_DISTRIBUTION_SIGNING_IDENTITY` | Exact `Apple Distribution: ...` identity name |
+| `MAC_APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded Mac App Store provisioning profile for `com.vepando.minutewave` |
 | `MAC_INSTALLER_CERT_P12_BASE64` | Base64-encoded `.p12` for `3rd Party Mac Developer Installer: ...` |
 | `MAC_INSTALLER_CERT_PASSWORD` | Password for the installer `.p12` |
 | `MAC_INSTALLER_SIGNING_IDENTITY` | Exact `3rd Party Mac Developer Installer: ...` identity name |
+
+The provisioning profile must be created in Apple Developer
+Certificates, Identifiers & Profiles for the explicit App ID
+`com.vepando.minutewave`, team `RU59889W67`, and the same Apple Distribution
+certificate used by the workflow. GitHub Actions embeds it as
+`MinuteWave.app/Contents/embedded.provisionprofile` before the final app
+codesign step. Without this profile, App Store Connect accepts the upload but
+marks the macOS build unavailable for TestFlight with `ITMS-90889`.
 
 Use one App Store Connect authentication method:
 
