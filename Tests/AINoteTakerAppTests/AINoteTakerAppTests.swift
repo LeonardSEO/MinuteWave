@@ -467,6 +467,16 @@ func modelIntegrityVerifierDetectsMismatch() throws {
     #expect(mismatchDetected == true)
 }
 
+@Test("FluidAudio Parakeet v3 integrity roots use v3 joint model")
+func fluidAudioParakeetV3IntegrityRootsUseV3JointModel() {
+    let roots = LocalFluidAudioProvider.parakeetV3RequiredModelRoots()
+
+    #expect(roots.contains("Preprocessor.mlmodelc"))
+    #expect(roots.contains("Decoder.mlmodelc"))
+    #expect(roots.contains("JointDecisionv3.mlmodelc"))
+    #expect(roots.contains("JointDecision.mlmodelc") == false)
+}
+
 @Test("Session lifecycle")
 func sessionLifecycle() async throws {
     let tempDB = URL(fileURLWithPath: NSTemporaryDirectory())

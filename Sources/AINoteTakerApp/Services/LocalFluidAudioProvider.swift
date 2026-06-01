@@ -218,7 +218,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
 
             async let asrManifestTask = fetchRepoManifest(
                 repo: asrRepo,
-                requiredModelRoots: ModelNames.ASR.requiredModels,
+                requiredModelRoots: Self.parakeetV3RequiredModelRoots(),
                 includeMetadataExtensions: Set(["json", "txt"])
             )
             async let diarizerManifestTask = fetchRepoManifest(
@@ -633,6 +633,10 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         } catch {
             return nil
         }
+    }
+
+    static func parakeetV3RequiredModelRoots() -> Set<String> {
+        ModelNames.ASR.requiredModelsV3(precision: .int8)
     }
 
     private func expectedIntegrityPaths(from manifest: RepoManifest?) -> [String]? {
