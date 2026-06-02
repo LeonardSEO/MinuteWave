@@ -57,6 +57,9 @@ Want to convert your own model? Check [möbius](https://github.com/FluidInferenc
 | **[Parakeet EOU Ultra-Low Latency](https://x.com/y_earu/status/2038654262608064967)** | Real-time Parakeet EOU transcription on iOS demonstrating ultra-low latency speech-to-text |
 | **[Action Phrase Live Production Control](https://www.youtube.com/watch?v=ykcvdTHHmrk)** | Voice-controlled live production workflow using FluidAudio's ASR and speaker diarization to trigger cameras, graphics, and layouts with natural voice commands |
 | **[talat - VAD, ASR, Speaker ID](https://www.youtube.com/watch?v=OjP4Adrv9_E)** | A video demo showcasing FluidAudio's VAD, two different ASR models, and speaker diarization during a talat.app meeting recording |
+| **[MagpieTTS Multilingual on iPhone 17 Pro](https://x.com/sach1n/status/2030521943263436934)** | NVIDIA's MagpieTTS Multilingual model converted to CoreML and running on an iPhone 17 Pro |
+| **[Kyutai PocketTTS on ANE](https://x.com/sach1n/status/2051375097408360596)** | Kyutai labs PocketTTS in iOS running fast on the ANE & background-capable |
+| **[Supertonic-3 on iPhone 17 Pro ANE](https://x.com/sach1n/status/2056476851825250685)** | Supertonic-3 running on iPhone 17 Pro via ANE/CoreML with 2 minutes of audio generated in 3 seconds with low RAM & background support |
 
 ## Showcase
 
@@ -86,7 +89,7 @@ Make a PR if you want to add your app, please keep it in chronological order.
 | **[Summit AI Notes](https://summitnotes.app/)** | Local meeting transcription and summarization with speaker identification. Supports 100+ languages. |
 | **[Ora](https://futurelab.studio/ora)** | Local voice assistant for macOS with speech recognition and text-to-speech. |
 | **[Flowstay](https://flowstay.app)** | Easy text-to-speech, local post-processing and Claude Code integration for macOS. Free forever. |
-| **[macos-speech-server](https://github.com/dokterbob/macos-speech-server)** | OpenAI compatible STT/transcription and TTS/speech API server. |
+| **[macos-speech-server](https://github.com/dokterbob/macos-speech-server)** | Wyoming (Home Assistant) and OpenAI compatible STT/transcription and TTS/speech API server. |
 | **[Snaply](https://snaply.ai)** |Free, Fast, 100% local AI dictation for Mac. |
 | **[OpenOats](https://github.com/yazinsai/OpenOats)** | Open-source meeting note-taker that transcribes conversations in real time and surfaces relevant notes from your knowledge base. Uses FluidAudio for local transcription. |
 | **[Enconvo](https://enconvo.com)** | AI Agent Launcher for macOS with voice input, live captions, and text-to-speech. Uses Parakeet ASR for local speech recognition. |
@@ -102,12 +105,13 @@ Make a PR if you want to add your app, please keep it in chronological order.
 | **[MimicScribe](https://mimicscribe.app/)** | macOS menu bar app combining Parakeet TDT streaming ASR, PyanNote Community 1 speaker diarization, and cloud LLMs to provide AI-generated talking points during meetings, derived from the live transcript and user-provided instructions. Features meeting summarization, natural language search, an MCP server for agent integration, and a keyboard- and voice-forward UI. |
 | **[Action Phrase](https://actionphrase.com/)** | Voice-controlled live production app for iOS, iPadOS, and macOS. Control cameras, graphics, layouts, and production workflows with natural voice commands. Integrates with popular tools including OBS, vMix, ProPresenter, Bitfocus Companion, and more. Uses Parakeet TDT ASR and Sortformer diarization. |
 | **[Sayboard](https://github.com/stanlsv/sayboard)** | Privacy-first AI voice keyboard for iOS. Local models, no servers, no tracking, no subscriptions, no ads, no in-app purchases. Fully offline and open-source. |
-| **[Kesha Voice Kit](https://github.com/drakulavich/kesha-voice-kit)** | Open-source voice toolkit for Apple Silicon. CLI tool and [OpenClaw](https://github.com/openclaw/openclaw) skill that gives LLM agents local speech-to-text in 25 languages. Uses Parakeet TDT ASR via FluidAudio. |
+| **[Kesha Voice Kit](https://github.com/drakulavich/kesha-voice-kit)** | Local-first voice toolkit for CLI and LLM-agent workflows. Provides speech-to-text in 25 languages, text-to-speech, VAD, language detection, OpenClaw and MCP integrations, with FluidAudio powering Apple Silicon ASR and Kokoro TTS. |
 | **[Dictato](https://dicta.to)** | Turn your voice into text anywhere on your Mac. Fully local, private, and offline — boost your own vocabulary and dictate in multiple languages. Uses Parakeet TDT ASR. |
 | **[Utter](https://github.com/joepetrakovich/utter)** | An ultra-minimal speech-to-text status bar utility for Mac.  Register a hotkey and go. |
 | **[Resonant](https://onresonant.com)** | macOS voice workspace for dictation, meetings, and ambient work context. Uses FluidAudio for local transcription and speaker diarization. |
 | **[Thoth](https://thoth-app.com)** | Privacy-first meeting recorder for Mac. Records both sides of any call with dual-channel audio, transcribes locally with speaker diarization, and summarizes with on-device AI or BYOK cloud. Available on the Mac App Store. Featured in [MacGeneration](https://www.macg.co/logiciels/2026/05/thoth-une-nouvelle-app-de-transcription-axee-sur-les-reunions-et-le-temps-reel-308471). Uses Parakeet EOU and Parakeet TDT ASR. |
 | **[Dettivo](https://dettivo.com)** | Local-first Mac app for private dictation, transcripts, and meeting workflows in one place, with developer tooling across CLI, MCP, REST, and app automation. Uses FluidAudio Parakeet TDT ASR and offline speaker diarization. |
+| **[Parleq](https://parleq.app/)** | Privacy-first macOS dictation — press a hotkey, speak, paste cleaned-up text. On-device Parakeet TDT v3 ASR with CTC vocabulary boosting (audio never leaves the Mac), provider-pluggable LLM cleanup (Gemini/Vertex, Bedrock, Azure), and reference windows that bring on-screen context into the cleanup. Open source. |
 
 ## Installation
 

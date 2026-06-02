@@ -20,6 +20,7 @@
 | Build DMG | `./scripts/build_dmg.sh release` | ~5-15m |
 
 - `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` were rerun on 2026-05-28 after the vendored `FluidAudio` upgrade to v0.14.7.
+- `FluidAudio` was refreshed to upstream v0.14.8 on 2026-06-02; rerun the relevant verification commands before claiming current release readiness.
 - The commands pass locally. Known remaining warnings: SwiftPM reports a missing vendored FluidAudio `Frameworks` exclude path, and the local Homebrew SQLCipher dylib advertises a newer macOS build version than the app deployment target.
 - Do not claim release readiness from these checks alone; permission-sensitive behavior still needs real-bundle TCC testing on the target machine.
 
@@ -116,7 +117,7 @@ dist/                   -> generated release artifacts
 - Claim `swift build` or `swift test` passed without fresh command output.
 
 ## Codebase State
-- `FluidAudio` is vendored under `Vendor/FluidAudio` and was refreshed to upstream v0.14.7 on 2026-05-28.
+- `FluidAudio` is vendored under `Vendor/FluidAudio` and was refreshed to upstream v0.14.8 on 2026-06-02.
 - Tests are concentrated in a single `AINoteTakerAppTests.swift` file; keep new tests grouped but readable until the suite is split.
 - The repo uses the package name `MinuteWave` while the source target remains `AINoteTakerApp`; do not rename casually.
 - `scripts/build_unsigned_dmg.sh` is deprecated; prefer `scripts/build_dmg.sh`.

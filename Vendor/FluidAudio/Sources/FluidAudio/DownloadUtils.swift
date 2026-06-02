@@ -163,7 +163,8 @@ public class DownloadUtils {
     ///
     /// Clears both cache locations:
     /// - `~/Library/Application Support/FluidAudio/Models/` (ASR, VAD, Diarization)
-    /// - `~/.cache/fluidaudio/Models/` (TTS)
+    /// - the shared TTS root: `~/.cache/fluidaudio/` on macOS,
+    ///   `Application Support/fluidaudio/` on iOS (matches `TtsCacheDirectory`).
     public static func clearAllModelCaches() {
         let fm = FileManager.default
 
@@ -173,14 +174,16 @@ public class DownloadUtils {
             try? fm.removeItem(at: modelsDir)
         }
 
-        // TTS models (Kokoro, PocketTTS)
+        // TTS models (Kokoro, PocketTTS, Magpie, Supertonic3, StyleTTS2).
+        // Remove the whole `fluidaudio/` root so every backend subdirectory
+        // (Models/, voice packs, etc.) is cleared, not just `Models/`.
         #if os(macOS)
         let home = fm.homeDirectoryForCurrentUser
-        let ttsCache = home.appendingPathComponent(".cache/fluidaudio/Models")
+        let ttsCache = home.appendingPathComponent(".cache/fluidaudio")
         try? fm.removeItem(at: ttsCache)
         #else
-        if let cacheDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            let ttsCache = cacheDir.appendingPathComponent("fluidaudio/Models")
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let ttsCache = appSupport.appendingPathComponent("fluidaudio")
             try? fm.removeItem(at: ttsCache)
         }
         #endif
@@ -201,14 +204,24 @@ public class DownloadUtils {
 
         let repoPath = directory.appendingPathComponent(repo.folderName)
         let requiredModels = ModelNames.getRequiredModelNames(for: repo, variant: variant)
-        let allModelsExist = requiredModels.allSatisfy { model in
+        // The caller-supplied `modelNames` may include files outside the repo's
+        // default "required" set (e.g. CtcHead.mlmodelc inside parakeet-ctc-110m
+        // when loaded by the TDT-CTC manager — see issue #524). Union them in
+        // so the cache-validity check and the download filter both consider
+        // every model the caller actually needs.
+        let extraModelNames = Set(modelNames).subtracting(requiredModels)
+        let effectiveModels = requiredModels.union(extraModelNames)
+        let allModelsExist = effectiveModels.allSatisfy { model in
             let modelPath = repoPath.appendingPathComponent(model)
             return FileManager.default.fileExists(atPath: modelPath.path)
         }
 
         if !allModelsExist {
             logger.info("Models not found in cache at \(repoPath.path)")
-            try await downloadRepo(repo, to: directory, variant: variant, progressHandler: progressHandler)
+            try await downloadRepo(
+                repo, to: directory, variant: variant,
+                additionalModelNames: extraModelNames,
+                progressHandler: progressHandler)
         } else {
             logger.info("Found \(repo.folderName) locally, no download needed")
             progressHandler?(
@@ -276,11 +289,18 @@ public class DownloadUtils {
         return models
     }
 
-    /// Download a HuggingFace repository using URLSession (does not load models)
+    /// Download a HuggingFace repository using URLSession (does not load models).
+    ///
+    /// - Parameter additionalModelNames: Extra model directory names (e.g.
+    ///   `"CtcHead.mlmodelc"`) to fetch in addition to the repo's default
+    ///   `ModelNames.getRequiredModelNames(...)` set. Used by `loadModels` to
+    ///   forward caller-requested files that are not part of the repo's
+    ///   baseline required set.
     public static func downloadRepo(
         _ repo: Repo,
         to directory: URL,
         variant: String? = nil,
+        additionalModelNames: Set<String> = [],
         progressHandler: ProgressHandler? = nil
     ) async throws {
         logger.info("Downloading \(repo.folderName) from HuggingFace...")
@@ -289,6 +309,7 @@ public class DownloadUtils {
         try FileManager.default.createDirectory(at: repoPath, withIntermediateDirectories: true)
 
         let requiredModels = ModelNames.getRequiredModelNames(for: repo, variant: variant)
+            .union(additionalModelNames)
         let subPath = repo.subPath  // e.g., "160ms" for parakeetEou160
 
         // Build patterns for filtering (relative to subPath if present)

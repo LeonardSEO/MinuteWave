@@ -62,7 +62,7 @@ final class AppViewModel: ObservableObject {
     @Published var isLocalRuntimeReachable: Bool = true
     @Published var localRuntimeStatusText: String = L10n.tr("ui.status.local_runtime.ready_on_demand")
     @Published var isLocalTranscriptionHealthy: Bool = false
-    @Published var localTranscriptionStatusText: String = L10n.tr("ui.status.local_transcription.not_checked")
+    @Published var localTranscriptionStatusText: String = L10n.tr("ui.status.local_transcription.ready")
     @Published var localCaptureStatusText: String = L10n.tr("ui.status.audio.unknown")
     @Published var localCaptureWarningText: String?
     @Published var isStoppingRecording: Bool = false
@@ -204,6 +204,7 @@ final class AppViewModel: ObservableObject {
             if let modelRef = settings.transcriptionConfig.localModelRef {
                 modelInstallState = try await repository.loadModelInstallState(modelId: modelRef.modelId)
             }
+            resetLocalTranscriptionStatusForIdleLocalProvider()
             await refreshCaptureStatus()
 
             applyTheme(nil)
@@ -286,8 +287,7 @@ final class AppViewModel: ObservableObject {
                 localRuntimeStatusText = L10n.tr("ui.status.local_runtime.not_used")
                 isLocalRuntimeReachable = false
             }
-            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.not_checked")
-            isLocalTranscriptionHealthy = false
+            resetLocalTranscriptionStatusForIdleLocalProvider()
             await refreshCaptureStatus()
             await refreshLMStudioRuntimeStatus()
         } catch {
@@ -738,8 +738,7 @@ final class AppViewModel: ObservableObject {
             if let key = lmStudioApiKey, !key.isEmpty {
                 try keychain.set(key, key: normalized.lmStudioConfig.apiKeyRef)
             }
-            localTranscriptionStatusText = L10n.tr("ui.status.local_transcription.not_checked")
-            isLocalTranscriptionHealthy = false
+            resetLocalTranscriptionStatusForIdleLocalProvider()
 
             startupPreparation = .idle
             if normalized.transcriptionConfig.providerType == .localVoxtral {
@@ -1420,16 +1419,16 @@ final class AppViewModel: ObservableObject {
                 defaults.set(true, forKey: DefaultsKeys.liveTranscriptDefaultMigrationV1)
             }
 
-            if let existing = normalized.transcriptionConfig.localModelRef,
-               existing.modelId == "mistralai/Voxtral-Mini-4B-Realtime-2602"
-                || existing.modelId == "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit" {
-                normalized.transcriptionConfig.localModelRef = .defaultParakeet
-            }
-            if normalized.transcriptionConfig.localModelRef == nil {
-                normalized.transcriptionConfig.localModelRef = .defaultParakeet
-            }
+            normalized.transcriptionConfig.localModelRef = .defaultParakeet
         }
         return normalized
+    }
+
+    private func resetLocalTranscriptionStatusForIdleLocalProvider() {
+        isLocalTranscriptionHealthy = false
+        localTranscriptionStatusText = settings.transcriptionConfig.providerType == .localVoxtral
+            ? L10n.tr("ui.status.local_transcription.ready")
+            : L10n.tr("ui.status.local_transcription.not_checked")
     }
 
 }

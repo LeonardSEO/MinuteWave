@@ -38,7 +38,7 @@ macOS SwiftUI app code for MinuteWave. `AppViewModel` is the state hub, `AppCont
 - Test: `swift test`
 - App bundle: `./scripts/build_dev_app_bundle.sh debug`
 - DMG: `./scripts/build_dmg.sh release`
-- Status on 2026-05-28: `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` pass locally after the vendored `FluidAudio` v0.14.7 upgrade. Remaining local warnings are from the vendored FluidAudio exclude path and Homebrew SQLCipher deployment metadata.
+- Status on 2026-05-28: `swift build`, `swift test`, and `./scripts/build_dev_app_bundle.sh debug` pass locally after the vendored `FluidAudio` v0.14.7 upgrade. `FluidAudio` was refreshed again to v0.14.8 on 2026-06-02; rerun current verification before claiming release readiness. Remaining local warnings are from the vendored FluidAudio exclude path and Homebrew SQLCipher deployment metadata.
 
 ## Code style & conventions
 - Keep `AppViewModel` as the orchestrator; do not move persistence or provider side effects into SwiftUI views.

@@ -190,6 +190,14 @@ final class HybridAudioCaptureEngine: AudioCaptureEngine, @unchecked Sendable {
     private func startMicrophoneCapture() throws {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+
+        do {
+            try inputNode.setVoiceProcessingEnabled(true)
+            NSLog("Microphone voice processing enabled for echo cancellation.")
+        } catch {
+            NSLog("Microphone voice processing unavailable, continuing without echo cancellation: \(error.localizedDescription)")
+        }
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
             throw AppError.providerUnavailable(reason: "Microphone input device is unavailable or disabled in macOS Sound settings.")

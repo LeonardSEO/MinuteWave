@@ -133,7 +133,11 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         }
 
         var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
-        let rawAsr = try await asrManager.transcribe(audioSamples, decoderState: &decoderState)
+        let rawAsr = try await asrManager.transcribe(
+            audioSamples,
+            decoderState: &decoderState,
+            language: Self.languageHint(for: captured.config.languageMode)
+        )
         let normalizedAsr = normalizeASRResult(rawAsr)
         let transcriptText = normalizedAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         let tokenTimingCount = normalizedAsr.tokenTimings?.count ?? 0
@@ -271,14 +275,14 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 status: .verifying,
                 step: .initializingAsr
             )
-            let localAsrManager = AsrManager(config: .default, models: loadedAsrModels)
+            let localAsrManager = AsrManager(config: Self.minuteWaveParakeetV3Config, models: loadedAsrModels)
             emitPreparationProgress(
                 progress: 0.68,
                 status: .verifying,
                 step: .initializingAsr
             )
 
-            let diarizationConfig = OfflineDiarizerConfig(clusteringThreshold: 0.6)
+            let diarizationConfig = OfflineDiarizerConfig(clusteringThreshold: Self.meetingDiarizationThreshold)
             let localDiarizer = OfflineDiarizerManager(config: diarizationConfig)
             emitPreparationProgress(
                 progress: 0.72,
@@ -622,7 +626,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
     }
 
     private func normalizeASRResult(_ result: ASRResult) -> ASRResult {
-        // FluidAudio 0.12.1 does not expose the ITN normalizer in the public API.
+        // FluidAudio does not expose the ITN normalizer in the public API.
         // Keep output unchanged as a safe fallback.
         result
     }
@@ -659,6 +663,43 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
 
     static func parakeetV3RequiredModelRoots() -> Set<String> {
         ModelNames.ASR.requiredModelsV3(precision: .int8)
+    }
+
+    static var minuteWaveParakeetV3Config: ASRConfig {
+        ASRConfig(
+            melChunkContext: false,
+            dualDecodeArbitration: true
+        )
+    }
+
+    static let meetingDiarizationThreshold = 0.7
+
+    static func languageHint(for mode: LanguageMode) -> Language? {
+        switch mode {
+        case .fixed(let code):
+            return languageHint(for: code)
+        case .auto(let preferred):
+            return preferred.lazy.compactMap(languageHint(for:)).first
+        }
+    }
+
+    private static func languageHint(for code: String) -> Language? {
+        let normalizedCode = code
+            .lowercased()
+            .split(whereSeparator: { $0 == "-" || $0 == "_" })
+            .first
+            .map(String.init) ?? code.lowercased()
+
+        if let supported = Language(rawValue: normalizedCode) {
+            return supported
+        }
+
+        switch normalizedCode {
+        case "nl":
+            return .english
+        default:
+            return nil
+        }
     }
 
     private func expectedIntegrityPaths(from manifest: RepoManifest?) -> [String]? {

@@ -1,5 +1,6 @@
 // swift-tools-version: 6.0
 import PackageDescription
+import Foundation
 
 let package = Package(
     name: "FluidAudio",
@@ -39,9 +40,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "FluidAudioCLI",
-            dependencies: [
-                "FluidAudio",
-            ],
+            dependencies: ["FluidAudio"],
             path: "Sources/FluidAudioCLI",
             exclude: ["README.md"],
             resources: [

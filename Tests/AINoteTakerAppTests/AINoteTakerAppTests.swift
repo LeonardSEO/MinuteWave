@@ -1,4 +1,5 @@
 import Foundation
+import FluidAudio
 import SQLite3
 import Testing
 @testable import AINoteTakerApp
@@ -137,6 +138,23 @@ func transcriptNormalizerRemovesStandaloneFillers() {
     let normalized = TranscriptTextNormalizer.normalize("Ehm, ik bedoel uh vandaag 2 juni. euh Dus ja.")
 
     #expect(normalized == "ik bedoel vandaag 2 juni. Dus ja.")
+}
+
+@Test("Local FluidAudio uses Parakeet v3 meeting defaults")
+func localFluidAudioUsesParakeetV3MeetingDefaults() {
+    let config = LocalFluidAudioProvider.minuteWaveParakeetV3Config
+
+    #expect(config.melChunkContext == false)
+    #expect(config.dualDecodeArbitration == true)
+    #expect(LocalFluidAudioProvider.meetingDiarizationThreshold == 0.7)
+}
+
+@Test("Local FluidAudio maps app language settings to safe ASR hints")
+func localFluidAudioLanguageHints() {
+    #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "pl")) == .polish)
+    #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "en-US")) == .english)
+    #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "nl")) == .dutch)
+    #expect(LocalFluidAudioProvider.languageHint(for: .auto(preferred: ["nl", "en"])) == .dutch)
 }
 
 private func seedMigrationFixture(

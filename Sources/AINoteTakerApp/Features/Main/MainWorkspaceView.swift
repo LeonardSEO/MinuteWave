@@ -176,8 +176,7 @@ struct MainWorkspaceView: View {
     private func sidebar(topInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                draftSessionNameInput = defaultSessionName()
-                showNewSessionSheet = true
+                startNewSessionRecording()
             } label: {
                 HStack(spacing: 8) {
                     Spacer(minLength: 0)
@@ -211,6 +210,7 @@ struct MainWorkspaceView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .disabled(!viewModel.canStartRecording)
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -560,9 +560,16 @@ struct MainWorkspaceView: View {
     private func createDraftSession() {
         let trimmed = draftSessionNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = trimmed.isEmpty ? defaultSessionName() : trimmed
-        viewModel.prepareNewSessionDraft()
-        viewModel.recordingSessionName = name
         showNewSessionSheet = false
+        startNewSessionRecording(named: name)
+    }
+
+    private func startNewSessionRecording(named name: String? = nil) {
+        guard viewModel.canStartRecording else { return }
+        let sessionName = name ?? defaultSessionName()
+        viewModel.prepareNewSessionDraft()
+        viewModel.recordingSessionName = sessionName
+        Task { await viewModel.startRecording(with: sessionName) }
     }
 
     private func startRename() {
