@@ -154,7 +154,27 @@ func localFluidAudioLanguageHints() {
     #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "pl")) == .polish)
     #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "en-US")) == .english)
     #expect(LocalFluidAudioProvider.languageHint(for: .fixed(code: "nl")) == .dutch)
-    #expect(LocalFluidAudioProvider.languageHint(for: .auto(preferred: ["nl", "en"])) == .dutch)
+    #expect(LocalFluidAudioProvider.languageHint(for: .auto(preferred: ["nl", "en"])) == nil)
+}
+
+@Test("Local FluidAudio locks auto language from the opening transcript")
+func localFluidAudioLocksAutoLanguageFromOpeningTranscript() {
+    let dutch = LocalFluidAudioProvider.autoDetectedLanguageHint(
+        from: "Een hele goedemorgen, ik ben Leonard en het is vandaag onze meeting.",
+        preferred: ["nl", "en"]
+    )
+    let english = LocalFluidAudioProvider.autoDetectedLanguageHint(
+        from: "Good morning, today we have the meeting and this is the plan.",
+        preferred: ["nl", "en"]
+    )
+    let polish = LocalFluidAudioProvider.autoDetectedLanguageHint(
+        from: "Dzien dobry, jestem Leonard i mamy dzisiaj spotkanie.",
+        preferred: ["pl", "en"]
+    )
+
+    #expect(dutch == .dutch)
+    #expect(english == .english)
+    #expect(polish == .polish)
 }
 
 private func seedMigrationFixture(

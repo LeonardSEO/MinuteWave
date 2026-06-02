@@ -58,6 +58,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
     private enum Constants {
         static let sampleRate = 16_000.0
         static let bytesPerSample = 2
+        static let autoLanguageProbeDurationSeconds = 45.0
         static let maxIntraSegmentGapSeconds = 1.4
         static let monitorIntervalMs: UInt64 = 250
     }
@@ -132,11 +133,16 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             throw AppError.providerUnavailable(reason: "ASR manager is not initialized.")
         }
 
+        let sessionLanguage = try await resolveSessionLanguage(
+            mode: captured.config.languageMode,
+            audioSamples: audioSamples,
+            asrManager: asrManager
+        )
         var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
         let rawAsr = try await asrManager.transcribe(
             audioSamples,
             decoderState: &decoderState,
-            language: Self.languageHint(for: captured.config.languageMode)
+            language: sessionLanguage
         )
         let normalizedAsr = normalizeASRResult(rawAsr)
         let transcriptText = normalizedAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
@@ -678,9 +684,43 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         switch mode {
         case .fixed(let code):
             return languageHint(for: code)
-        case .auto(let preferred):
-            return preferred.lazy.compactMap(languageHint(for:)).first
+        case .auto:
+            return nil
         }
+    }
+
+    static func autoDetectedLanguageHint(from transcript: String, preferred: [String]) -> Language? {
+        let preferredHints = preferred.compactMap(languageHint(for:))
+        let candidates = preferredHints.isEmpty
+            ? Array(languageMarkerWords.keys)
+            : Array(Set(preferredHints))
+        guard !candidates.isEmpty else { return nil }
+
+        let tokens = normalizedLanguageTokens(from: transcript)
+        guard tokens.count >= 4 else { return nil }
+
+        var scores: [Language: Int] = [:]
+        for candidate in candidates {
+            guard let markers = languageMarkerWords[candidate] else { continue }
+            scores[candidate] = tokens.reduce(0) { partial, token in
+                partial + (markers.contains(token) ? 1 : 0)
+            }
+        }
+
+        let ranked = candidates
+            .map { ($0, scores[$0] ?? 0) }
+            .sorted { lhs, rhs in
+                if lhs.1 == rhs.1 {
+                    return preferredHints.firstIndex(of: lhs.0) ?? Int.max
+                        < preferredHints.firstIndex(of: rhs.0) ?? Int.max
+                }
+                return lhs.1 > rhs.1
+            }
+        guard let best = ranked.first, best.1 >= 2 else { return nil }
+        if ranked.count > 1, best.1 == ranked[1].1, !preferredHints.contains(best.0) {
+            return nil
+        }
+        return best.0
     }
 
     private static func languageHint(for code: String) -> Language? {
@@ -700,6 +740,90 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         default:
             return nil
         }
+    }
+
+    private func resolveSessionLanguage(
+        mode: LanguageMode,
+        audioSamples: [Float],
+        asrManager: AsrManager
+    ) async throws -> Language? {
+        if let fixed = Self.languageHint(for: mode) {
+            AppLogger.transcription.info(
+                "Local FluidAudio session language fixed: \(fixed.rawValue, privacy: .public)"
+            )
+            return fixed
+        }
+
+        guard case .auto(let preferred) = mode else { return nil }
+        let probeSampleCount = min(
+            audioSamples.count,
+            Int(Constants.sampleRate * Constants.autoLanguageProbeDurationSeconds)
+        )
+        guard probeSampleCount > 0 else { return nil }
+
+        var probeState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
+        let probeResult = try await asrManager.transcribe(
+            Array(audioSamples.prefix(probeSampleCount)),
+            decoderState: &probeState,
+            language: nil
+        )
+        if let detected = Self.autoDetectedLanguageHint(from: probeResult.text, preferred: preferred) {
+            AppLogger.transcription.info(
+                "Local FluidAudio auto language locked: \(detected.rawValue, privacy: .public)"
+            )
+            return detected
+        }
+
+        let fallback = preferred.lazy.compactMap(Self.languageHint(for:)).first
+        if let fallback {
+            AppLogger.transcription.info(
+                "Local FluidAudio auto language fallback locked: \(fallback.rawValue, privacy: .public)"
+            )
+        } else {
+            AppLogger.transcription.info("Local FluidAudio auto language unlocked: no supported preferred language.")
+        }
+        return fallback
+    }
+
+    private static let languageMarkerWords: [Language: Set<String>] = [
+        .dutch: [
+            "aan", "als", "ben", "bij", "daar", "dan", "dat", "de", "deze", "die", "dit",
+            "door", "dus", "een", "en", "gaan", "goedemorgen", "heb", "heeft", "het", "hij",
+            "hoe", "ik", "in", "is", "jij", "je", "kan", "met", "mijn", "niet", "nog", "om",
+            "omdat", "ons", "ook", "op", "te", "tot", "van", "vandaag", "voor", "wat", "we",
+            "wel", "wij", "worden", "zijn", "zo"
+        ],
+        .english: [
+            "about", "am", "and", "are", "as", "because", "but", "for", "from", "have", "i",
+            "in", "is", "it", "meeting", "morning", "not", "of", "on", "so", "that", "the",
+            "this", "to", "today", "was", "we", "with", "you"
+        ],
+        .polish: [
+            "ale", "bedzie", "bez", "co", "czy", "dla", "do", "dobry", "dzien", "i", "jak",
+            "jest", "jestem", "mamy", "na", "nie", "o", "od", "po", "prosimy", "przez",
+            "sie", "spotkanie", "tak", "to", "w", "we", "z", "za", "ze"
+        ],
+        .german: [
+            "aber", "am", "auch", "auf", "aus", "bei", "das", "dem", "den", "der", "die",
+            "ein", "eine", "fur", "guten", "haben", "heute", "ich", "ist", "mit", "morgen",
+            "nicht", "und", "von", "wir", "zu"
+        ],
+        .french: [
+            "au", "avec", "bonjour", "ce", "dans", "de", "des", "du", "est", "et", "il",
+            "je", "la", "le", "les", "nous", "pas", "pour", "que", "qui", "sur", "un",
+            "une", "vous"
+        ],
+        .spanish: [
+            "buenos", "con", "de", "del", "el", "en", "es", "esta", "este", "hoy", "la",
+            "las", "los", "no", "para", "por", "que", "se", "si", "un", "una", "y", "yo"
+        ],
+    ]
+
+    private static func normalizedLanguageTokens(from text: String) -> [String] {
+        text
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .split { !$0.isLetter }
+            .map(String.init)
     }
 
     private func expectedIntegrityPaths(from manifest: RepoManifest?) -> [String]? {
