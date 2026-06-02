@@ -113,6 +113,12 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             throw AppError.providerUnavailable(reason: "No audio chunks captured for local transcription.")
         }
 
+        let capturedDurationSeconds = Double(captured.pcm16.count)
+            / (Constants.sampleRate * Double(Constants.bytesPerSample))
+        AppLogger.transcription.info(
+            "Local FluidAudio finalizing: capturedBytes=\(captured.pcm16.count, privacy: .public), durationSeconds=\(capturedDurationSeconds, privacy: .public)"
+        )
+
         try await prepareModelsIfNeeded(modelRef: captured.config.localModelRef)
         emitRuntimeEvent(.inferenceStarted)
         defer { emitRuntimeEvent(.inferenceCompleted) }
@@ -130,6 +136,10 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         let rawAsr = try await asrManager.transcribe(audioSamples, decoderState: &decoderState)
         let normalizedAsr = normalizeASRResult(rawAsr)
         let transcriptText = normalizedAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        let tokenTimingCount = normalizedAsr.tokenTimings?.count ?? 0
+        AppLogger.transcription.info(
+            "Local FluidAudio ASR result: textCharacters=\(transcriptText.count, privacy: .public), tokenTimings=\(tokenTimingCount, privacy: .public)"
+        )
 
         guard !transcriptText.isEmpty else {
             throw AppError.providerUnavailable(reason: "Local ASR returned an empty transcript.")
@@ -143,6 +153,9 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         )
 
         guard let diarizer = queue.sync(execute: { offlineDiarizerManager }) else {
+            AppLogger.transcription.info(
+                "Local FluidAudio transcript ready without diarization: segments=\(fallbackSegments.count, privacy: .public)"
+            )
             return Transcript(sessionId: captured.sessionId, segments: fallbackSegments)
         }
 
@@ -155,11 +168,20 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 fallbackText: transcriptText
             )
             if enriched.isEmpty {
+                AppLogger.transcription.info(
+                    "Local FluidAudio diarization returned no speaker segments; using fallback segments=\(fallbackSegments.count, privacy: .public)"
+                )
                 return Transcript(sessionId: captured.sessionId, segments: fallbackSegments)
             }
+            AppLogger.transcription.info(
+                "Local FluidAudio transcript ready with diarization: segments=\(enriched.count, privacy: .public), wordTimings=\(wordTimings.count, privacy: .public), diarizationSegments=\(diarization.segments.count, privacy: .public)"
+            )
             return Transcript(sessionId: captured.sessionId, segments: enriched)
         } catch {
             emitRuntimeEvent(.warning(message: "Diarization unavailable: \(error.localizedDescription)"))
+            AppLogger.transcription.warning(
+                "Local FluidAudio diarization failed; using fallback segments=\(fallbackSegments.count, privacy: .public), error=\(error.localizedDescription, privacy: .public)"
+            )
             return Transcript(sessionId: captured.sessionId, segments: fallbackSegments)
         }
     }

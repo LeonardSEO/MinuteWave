@@ -162,6 +162,12 @@ struct MainWorkspaceView: View {
             isTranscriptCollapsed = viewModel.settings.transcriptDefaultCollapsed
             selectedTab = .summary
         }
+        .onChange(of: viewModel.activeSessionStatus) { _, _ in
+            selectTranscriptTabIfCompleted()
+        }
+        .onChange(of: viewModel.currentSegments.count) { _, _ in
+            selectTranscriptTabIfCompleted()
+        }
         .onChange(of: viewModel.settings.transcriptDefaultCollapsed) { _, value in
             isTranscriptCollapsed = value
         }
@@ -960,6 +966,12 @@ private func workspaceTabButton(tab: WorkspaceTab, icon: String, label: String, 
             .foregroundStyle(isActive ? (isSecondary ? Color.secondary : Color.accentColor) : Color.secondary)
     }
     .buttonStyle(.plain)
+}
+
+private func selectTranscriptTabIfCompleted() {
+    guard viewModel.activeSessionStatus == .completed, hasTranscript else { return }
+    selectedTab = .transcript
+    isTranscriptCollapsed = false
 }
 
 private var statusColor: Color {
