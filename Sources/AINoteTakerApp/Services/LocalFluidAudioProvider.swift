@@ -463,7 +463,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 bucket.removeAll(keepingCapacity: true)
                 return
             }
-            let text = bucket.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = TranscriptTextNormalizer.normalize(bucket.map(\.word).joined(separator: " "))
             guard !text.isEmpty else {
                 bucket.removeAll(keepingCapacity: true)
                 return
@@ -522,7 +522,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         sessionId: UUID
     ) -> [TranscriptSegment] {
         if wordTimings.isEmpty {
-            let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = TranscriptTextNormalizer.normalize(text)
             guard !cleaned.isEmpty else { return [] }
             let durationMs = max(80, Int64((Double(cleaned.count) / 18.0) * 1_000.0))
             return [
@@ -548,7 +548,7 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
                 bucket.removeAll(keepingCapacity: true)
                 return
             }
-            let text = bucket.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = TranscriptTextNormalizer.normalize(bucket.map(\.word).joined(separator: " "))
             guard !text.isEmpty else {
                 bucket.removeAll(keepingCapacity: true)
                 return

@@ -123,6 +123,22 @@ private func makeOpenAITranscriptionConfig(baseURL: String) -> TranscriptionConf
     )
 }
 
+@Test("Transcript normalizer inserts spaces between letters and digits")
+func transcriptNormalizerSeparatesLettersAndDigits() {
+    let normalized = TranscriptTextNormalizer.normalize(
+        "Een hele goedemorg ik ben Leonard en het is vandaag2 juni en5 juni hoop ik26 te worden."
+    )
+
+    #expect(normalized == "Een hele goedemorg ik ben Leonard en het is vandaag 2 juni en 5 juni hoop ik 26 te worden.")
+}
+
+@Test("Transcript normalizer removes standalone filler words")
+func transcriptNormalizerRemovesStandaloneFillers() {
+    let normalized = TranscriptTextNormalizer.normalize("Ehm, ik bedoel uh vandaag 2 juni. euh Dus ja.")
+
+    #expect(normalized == "ik bedoel vandaag 2 juni. Dus ja.")
+}
+
 private func seedMigrationFixture(
     repository: SQLiteRepository,
     sessionName: String
