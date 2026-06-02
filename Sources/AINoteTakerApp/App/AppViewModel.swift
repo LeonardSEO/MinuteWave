@@ -653,13 +653,23 @@ final class AppViewModel: ObservableObject {
         do {
             currentSummary = try await assistantService.generateSummary(sessionId: sessionId, settings: settings)
         } catch let appError as AppError {
-            if case .providerUnavailable = appError, showUnavailableError == false {
+            if Self.shouldSuppressSummaryError(appError, showUnavailableError: showUnavailableError) {
                 return
             }
             transientError = userFacingErrorMessage(appError)
         } catch {
+            if Self.shouldSuppressSummaryError(error, showUnavailableError: showUnavailableError) {
+                return
+            }
             transientError = userFacingErrorMessage(error)
         }
+    }
+
+    nonisolated static func shouldSuppressSummaryError(_ error: Error, showUnavailableError: Bool) -> Bool {
+        if showUnavailableError {
+            return false
+        }
+        return true
     }
 
     func sendChat(question: String) async {

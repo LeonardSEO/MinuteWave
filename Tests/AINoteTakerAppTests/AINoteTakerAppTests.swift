@@ -1161,6 +1161,17 @@ func markdownSummaryParserFallback() {
     #expect(MarkdownSummaryView.parseMarkdown("broken\u{0000}markdown") == nil)
 }
 
+@Test("Automatic summary failures do not block completed recordings")
+func automaticSummaryFailuresDoNotBlockCompletedRecordings() {
+    let providerError = AppError.providerUnavailable(reason: "LM Studio server unreachable")
+    let networkError = URLError(.cannotConnectToHost)
+
+    #expect(AppViewModel.shouldSuppressSummaryError(providerError, showUnavailableError: false))
+    #expect(AppViewModel.shouldSuppressSummaryError(networkError, showUnavailableError: false))
+    #expect(AppViewModel.shouldSuppressSummaryError(providerError, showUnavailableError: true) == false)
+    #expect(AppViewModel.shouldSuppressSummaryError(networkError, showUnavailableError: true) == false)
+}
+
 @Test("Localization coverage for used keys in en and nl")
 func localizationKeyCoverage() throws {
     let repoRoot = URL(fileURLWithPath: #filePath)
