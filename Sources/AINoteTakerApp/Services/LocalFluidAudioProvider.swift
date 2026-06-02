@@ -49,6 +49,12 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         let totalKnownBytes: Int64
     }
 
+    private struct ResolvedSessionLanguage: Sendable {
+        let language: Language?
+        let probeResult: ASRResult?
+        let probeCoversFullRecording: Bool
+    }
+
     private struct HuggingFaceTreeItem: Decodable {
         let path: String
         let type: String
@@ -133,17 +139,43 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             throw AppError.providerUnavailable(reason: "ASR manager is not initialized.")
         }
 
-        let sessionLanguage = try await resolveSessionLanguage(
+        let resolvedLanguage = try await resolveSessionLanguage(
             mode: captured.config.languageMode,
             audioSamples: audioSamples,
             asrManager: asrManager
         )
-        var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
-        let rawAsr = try await asrManager.transcribe(
-            audioSamples,
-            decoderState: &decoderState,
-            language: sessionLanguage
-        )
+
+        let rawAsr: ASRResult
+        if let probeResult = resolvedLanguage.probeResult, resolvedLanguage.probeCoversFullRecording {
+            rawAsr = probeResult
+            AppLogger.transcription.info("Local FluidAudio reused full-recording language probe result.")
+        } else {
+            var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
+            let finalAsr = try await asrManager.transcribe(
+                audioSamples,
+                decoderState: &decoderState,
+                language: resolvedLanguage.language
+            )
+
+            if finalAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty,
+               resolvedLanguage.language != nil {
+                AppLogger.transcription.warning(
+                    "Local FluidAudio locked-language pass returned empty text; retrying without language hint."
+                )
+                var retryState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
+                let retryAsr = try await asrManager.transcribe(
+                    audioSamples,
+                    decoderState: &retryState,
+                    language: nil
+                )
+                rawAsr = retryAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                    ? resolvedLanguage.probeResult ?? retryAsr
+                    : retryAsr
+            } else {
+                rawAsr = finalAsr
+            }
+        }
+
         let normalizedAsr = normalizeASRResult(rawAsr)
         let transcriptText = normalizedAsr.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         let tokenTimingCount = normalizedAsr.tokenTimings?.count ?? 0
@@ -746,20 +778,25 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         mode: LanguageMode,
         audioSamples: [Float],
         asrManager: AsrManager
-    ) async throws -> Language? {
+    ) async throws -> ResolvedSessionLanguage {
         if let fixed = Self.languageHint(for: mode) {
             AppLogger.transcription.info(
                 "Local FluidAudio session language fixed: \(fixed.rawValue, privacy: .public)"
             )
-            return fixed
+            return ResolvedSessionLanguage(language: fixed, probeResult: nil, probeCoversFullRecording: false)
         }
 
-        guard case .auto(let preferred) = mode else { return nil }
+        guard case .auto(let preferred) = mode else {
+            return ResolvedSessionLanguage(language: nil, probeResult: nil, probeCoversFullRecording: false)
+        }
         let probeSampleCount = min(
             audioSamples.count,
             Int(Constants.sampleRate * Constants.autoLanguageProbeDurationSeconds)
         )
-        guard probeSampleCount > 0 else { return nil }
+        guard probeSampleCount > 0 else {
+            return ResolvedSessionLanguage(language: nil, probeResult: nil, probeCoversFullRecording: false)
+        }
+        let probeCoversFullRecording = probeSampleCount == audioSamples.count
 
         var probeState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
         let probeResult = try await asrManager.transcribe(
@@ -771,7 +808,11 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
             AppLogger.transcription.info(
                 "Local FluidAudio auto language locked: \(detected.rawValue, privacy: .public)"
             )
-            return detected
+            return ResolvedSessionLanguage(
+                language: detected,
+                probeResult: probeResult,
+                probeCoversFullRecording: probeCoversFullRecording
+            )
         }
 
         let fallback = preferred.lazy.compactMap(Self.languageHint(for:)).first
@@ -782,7 +823,11 @@ final class LocalFluidAudioProvider: TranscriptionProvider, @unchecked Sendable 
         } else {
             AppLogger.transcription.info("Local FluidAudio auto language unlocked: no supported preferred language.")
         }
-        return fallback
+        return ResolvedSessionLanguage(
+            language: fallback,
+            probeResult: probeResult,
+            probeCoversFullRecording: probeCoversFullRecording
+        )
     }
 
     private static let languageMarkerWords: [Language: Set<String>] = [
